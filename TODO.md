@@ -13,4 +13,4 @@
 - [ ] **Review the agent's system prompt** in `cli/src/agent.ts` (`SYSTEM_PROMPT`); it's the main safety control in v0.
 
 ## Decisions you may want to make
-- [ ] The repo has `git init` but no commits yet. Want me to make the initial commit or push to GitHub?
+- [ ] Push to GitHub? Everything is committed to `main` locally (no remote yet).
