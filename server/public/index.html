@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gig-slave dashboard</title>
+<style>
+  [hidden] { display: none !important; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 15px; color: #222; background: #f6f6f6; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 12px 16px; background: #fff; border-bottom: 1px solid #ddd; }
+  header strong { font-size: 17px; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 16px; align-items: start; max-width: 1100px; margin: 0 auto; padding: 16px; }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; padding: 12px; } }
+  .card { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 14px; margin-bottom: 16px; }
+  .narrow { max-width: 420px; margin: 40px auto; }
+  h2 { font-size: 17px; margin: 0 0 10px; }
+  h3 { font-size: 14px; margin: 16px 0 6px; }
+  label { display: block; margin: 10px 0; font-size: 14px; }
+  input, select, textarea { display: block; width: 100%; font: inherit; margin-top: 3px; padding: 7px; border: 1px solid #aaa; border-radius: 4px; background: #fff; }
+  textarea { resize: vertical; }
+  #instrText { flex: 1; min-width: 0; width: auto; margin-top: 0; }
+  button { font: inherit; padding: 6px 12px; border: 1px solid #888; border-radius: 4px; background: #fff; cursor: pointer; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: #222; color: #fff; border-color: #222; }
+  button.danger { color: #b00; border-color: #b00; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .wrap { flex-wrap: wrap; }
+  .between { justify-content: space-between; }
+  .grow { flex: 1; min-width: 0; }
+  .muted { color: #666; }
+  .small { font-size: 12px; }
+  .err { color: #b00; font-size: 13px; min-height: 1em; margin-top: 6px; overflow-wrap: anywhere; }
+  .ok { color: #2a7a3a; }
+  .bad { color: #b00; }
+  .badge { font-size: 12px; border: 1px solid #bbb; border-radius: 10px; padding: 0 7px; color: #444; white-space: nowrap; }
+  .code { font: 700 clamp(28px, 9vw, 52px) ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .06em; margin: 6px 0 10px; word-break: break-all; }
+  .cmd { background: #f3f3f3; padding: 8px; border-radius: 4px; white-space: pre-wrap; word-break: break-all; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .note { font-size: 13px; color: #8a4b00; background: #fff6e5; padding: 8px; border-radius: 4px; }
+  .invite { border-top: 1px solid #eee; padding-top: 10px; margin-top: 10px; }
+  .row-s { display: flex; gap: 10px; align-items: flex-start; width: 100%; text-align: left; background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 8px; margin: 6px 0; }
+  .row-s.sel { border-color: #2563eb; box-shadow: 0 0 0 1px #2563eb; }
+  .dot { flex: none; width: 10px; height: 10px; margin-top: 5px; border-radius: 50%; background: #999; }
+  .dot.green { background: #2a9d3f; }
+  .dot.blue { background: #2563eb; }
+  .dot.red { background: #d33; }
+  .report { border: 2px solid #2563eb; background: #eef4ff; border-radius: 6px; padding: 10px; margin: 12px 0; }
+  .reptext { white-space: pre-wrap; margin-top: 4px; overflow-wrap: anywhere; }
+  .log { max-height: 55vh; overflow: auto; border: 1px solid #e3e3e3; border-radius: 4px; padding: 6px; background: #fcfcfc; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .ln { display: flex; gap: 6px; align-items: flex-start; flex-wrap: wrap; padding: 2px 0; }
+  .t { color: #888; white-space: nowrap; }
+  .tag { font-size: 11px; background: #eee; border-radius: 3px; padding: 0 4px; white-space: nowrap; }
+  .tag.instruction { background: #fde9c8; }
+  .tag.error { background: #fbd5d5; }
+  .tag.report { background: #cfe0ff; }
+  .m { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  details pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f0f0f0; padding: 6px; margin: 4px 0; max-height: 240px; overflow: auto; }
+  summary { cursor: pointer; }
+</style>
+</head>
+<body>
+<header>
+  <strong>gig-slave</strong>
+  <span id="conn" class="muted small"></span>
+  <span class="grow"></span>
+  <a href="#" id="changeToken" hidden>change token</a>
+</header>
+
+<section id="auth" class="card narrow" hidden>
+  <h2>Admin token</h2>
+  <p class="muted small">Paste the server's ADMIN_TOKEN. It is saved in this browser only.</p>
+  <form id="tokenForm" autocomplete="off">
+    <input id="tokenInput" type="password" placeholder="ADMIN_TOKEN" required>
+    <div class="row" style="margin-top:10px">
+      <button class="primary" type="submit">Save</button>
+      <button type="button" id="tokenCancel" hidden>Cancel</button>
+    </div>
+    <div id="tokenErr" class="err"></div>
+  </form>
+</section>
+
+<main id="app" hidden>
+  <div>
+    <section class="card">
+      <h2>New agent</h2>
+      <form id="newForm">
+        <label>Label<input id="nLabel" required placeholder="Dad's iMac"></label>
+        <label>Task<textarea id="nTask" rows="5" required>Organize my Desktop into folders by type (Images, Documents, Videos, Music, Archives, Other). Don't touch folders that already exist. Never delete anything.</textarea></label>
+        <label>Working folder<input id="nDir" value="~/Desktop"></label>
+        <label>Model<select id="model"></select></label>
+        <label>Code expires
+          <select id="policy">
+            <option value="one_use" selected>After one use</option>
+            <option value="on_complete">When a run completes successfully</option>
+            <option value="ttl">After a set time</option>
+          </select>
+        </label>
+        <div id="ttlBox" hidden>
+          <label>Valid for
+            <select id="ttlPreset">
+              <option value="24" selected>1 day</option>
+              <option value="720">30 days</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <label id="ttlCustomBox" hidden>Hours<input id="ttlCustom" type="number" min="1" step="1" value="72"></label>
+        </div>
+        <button id="newBtn" class="primary" type="submit">Create code</button>
+        <div id="newErr" class="err"></div>
+      </form>
+      <div id="result" hidden>
+        <h3>Code</h3>
+        <div id="codeBig" class="code"></div>
+        <div class="row"><button type="button" id="copyCode">Copy code</button></div>
+        <h3>Command</h3>
+        <pre id="cmd" class="cmd"></pre>
+        <div class="row"><button type="button" id="copyCmd">Copy command</button></div>
+        <p class="note">Send this to the person. The code is shown only once.</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Agents</h2>
+      <div id="listErr" class="err"></div>
+      <div id="invites"></div>
+    </section>
+  </div>
+
+  <section id="detail" class="card" hidden>
+    <div class="row between">
+      <h2 id="dTitle" class="grow"></h2>
+      <button type="button" id="dClose">Close</button>
+    </div>
+    <div id="dHead"></div>
+    <div id="dReport" class="report" hidden></div>
+    <form id="instrForm" class="row" style="margin-top:10px">
+      <input id="instrText" placeholder="Send an instruction to the agent" autocomplete="off">
+      <button id="instrBtn" type="submit">Send</button>
+    </form>
+    <div id="instrErr" class="err"></div>
+    <div class="row wrap">
+      <button id="killBtn" class="danger" type="button">Kill agent</button>
+      <button id="revokeBtn" class="danger" type="button">Revoke invite</button>
+    </div>
+    <div id="actErr" class="err"></div>
+    <h3>Activity</h3>
+    <div id="log" class="log"></div>
+  </section>
+</main>
+
+<script>
+(() => {
+  'use strict';
+  const KEY = 'gigSlaveAdminToken';
+  const LIVE = ['done', 'failed', 'killed'];
+  const POLICY = { one_use: 'one use', on_complete: 'until complete', ttl: 'time limit' };
+  const DOT = { working: 'green', connecting: 'green', idle: 'gray', done: 'blue', failed: 'red', killed: 'red' };
+  const $ = id => document.getElementById(id);
+  const enc = encodeURIComponent;
+  const st = { token: null, invites: [], es: null, sel: null, events: [], seen: new Set(), lastId: 0, selReport: null };
+
+  // ---- DOM helpers: everything is built with text nodes, never innerHTML ----
+  function h(tag, props, ...kids) {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(props || {})) {
+      if (v === null || v === undefined || v === false) continue;
+      if (k === 'class') n.className = v;
+      else if (k === 'dataset') Object.assign(n.dataset, v);
+      else n.setAttribute(k, v === true ? '' : String(v));
+    }
+    for (const c of kids.flat()) if (c !== null && c !== undefined && c !== false) n.append(c instanceof Node ? c : String(c));
+    return n;
+  }
+  const fmtTime = ts => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const fmtDate = ts => new Date(ts).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+  const ago = ts => { const s = Math.max(0, Math.floor((Date.now() - ts) / 1000)); return s < 3600 ? s + 's ago' : Math.floor(s / 3600) + 'h ago'; };
+  const seenText = ts => (ts ? 'last seen ' + ago(ts) : 'not seen yet');
+  const seenSpan = ts => h('span', { class: 'seen muted small', dataset: { ts: ts || 0 } }, seenText(ts));
+  const dot = status => h('span', { class: 'dot ' + (DOT[status] || 'gray'), title: status });
+  const firstLine = s => (s.split('\n').find(l => l.trim()) || '(no output)').slice(0, 160);
+  const errMsg = (data, res) => (data && (typeof data.error === 'string' ? data.error : data.error && data.error.message)) || 'HTTP ' + res.status;
+  function argText(a) {
+    if (!a || typeof a !== 'object') return '';
+    const v = a.command ?? a.path ?? a.file_path;
+    return v != null ? String(v) : JSON.stringify(a).slice(0, 200);
+  }
+  function sessionAlive(s, inv) {
+    if (!inv || LIVE.includes(s.status)) return false;
+    if (inv.status === 'expired' || inv.status === 'revoked') return false;
+    return !(inv.expires_at && inv.expires_at <= Date.now());
+  }
+  const findInvite = id => st.invites.find(i => i.id === id);
+  function findSession(id) {
+    for (const inv of st.invites) {
+      const s = (inv.sessions || []).find(x => x.id === id);
+      if (s) return { s, inv };
+    }
+    return null;
+  }
+  const show = (el, e) => { if (!e.auth) el.textContent = e.message; };
+  async function act(el, fn) {
+    el.textContent = '';
+    try { return await fn(); } catch (e) { show(el, e); return null; }
+  }
+
+  // ---- auth and API ----
+  function authFail(msg) { const e = new Error(msg); e.auth = true; return e; }
+  function closeStream() { if (st.es) { st.es.close(); st.es = null; } }
+  function showAuth(msg, cancellable) {
+    closeStream();
+    $('app').hidden = true;
+    $('auth').hidden = false;
+    $('tokenErr').textContent = msg || '';
+    $('tokenCancel').hidden = !cancellable;
+    $('changeToken').hidden = true;
+    $('tokenInput').focus();
+  }
+  async function api(method, path, body) {
+    if (!st.token) { showAuth('', false); throw authFail('no token'); }
+    let res;
+    try {
+      res = await fetch(path, {
+        method,
+        headers: { Authorization: 'Bearer ' + st.token, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    } catch (e) { throw new Error('Cannot reach the server. ' + e.message); }
+    if (res.status === 401) {
+      st.token = null;
+      try { localStorage.removeItem(KEY); } catch (e) {}
+      showAuth('That admin token was rejected.', false);
+      throw authFail('unauthorized');
+    }
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(errMsg(data, res));
+    return data;
+  }
+
+  // ---- loading and live updates ----
+  async function start() {
+    closeStream();
+    $('auth').hidden = true;
+    $('app').hidden = false;
+    $('changeToken').hidden = false;
+    $('conn').textContent = 'connecting…';
+    try { await loadConfig(); } catch (e) { show($('newErr'), e); if (e.auth) return; }
+    try { await loadInvites(); } catch (e) { show($('listErr'), e); if (e.auth) return; }
+    connect();
+  }
+  async function loadConfig() {
+    const cfg = await api('GET', '/api/config');
+    $('model').replaceChildren(...(cfg.models || []).map(m => {
+      const o = h('option', { value: m }, m);
+      o.selected = m === cfg.default_model;
+      return o;
+    }));
+  }
+  async function loadInvites() {
+    const r = await api('GET', '/api/invites');
+    st.invites = r.invites || [];
+    $('listErr').textContent = '';
+    renderInvites();
+    renderDetail();
+  }
+  function upsertInvite(inv) {
+    const cur = findInvite(inv.id);
+    if (cur) Object.assign(cur, inv);
+    else st.invites.unshift({ ...inv, sessions: [] });
+  }
+  function connect() {
+    closeStream();
+    const es = new EventSource('/api/stream?token=' + enc(st.token));
+    st.es = es;
+    let opened = false;
+    es.addEventListener('open', () => {
+      $('conn').textContent = 'live';
+      if (opened) { // reconnect: resync from the server
+        loadInvites().catch(e => show($('listErr'), e));
+        refreshEvents();
+      }
+      opened = true;
+    });
+    es.addEventListener('event', e => onEvent(JSON.parse(e.data)));
+    es.addEventListener('session', e => onSession(JSON.parse(e.data)));
+    es.addEventListener('invite', e => onInvite(JSON.parse(e.data)));
+    es.addEventListener('error', () => {
+      $('conn').textContent = 'reconnecting…';
+      if (es.readyState !== EventSource.CLOSED) return; // browser retries on its own
+      closeStream();
+      setTimeout(async () => {
+        if (!st.token || $('app').hidden) return;
+        try { await loadInvites(); } catch (e) { if (e.auth) return; show($('listErr'), e); }
+        connect();
+      }, 3000);
+    });
+  }
+  function onSession(s) {
+    const inv = findInvite(s.invite_id);
+    if (!inv) { loadInvites().catch(e => show($('listErr'), e)); return; }
+    inv.sessions = inv.sessions || [];
+    const i = inv.sessions.findIndex(x => x.id === s.id);
+    if (i >= 0) inv.sessions[i] = s; else inv.sessions.push(s);
+    const rec = invCards.get(inv.id) || syncInvite(inv);
+    let sr = sessRows.get(s.id);
+    const isNew = !sr;
+    if (isNew) { sr = makeSessionRow(s.id); sessRows.set(s.id, sr); }
+    paintSession(sr, s);
+    if (isNew) insertSessionRow(rec, sr);
+    paintEmpty(rec, inv);
+    if (s.id === st.sel) renderDetail();
+  }
+  function onInvite(inv) {
+    upsertInvite(inv);
+    syncInvite(findInvite(inv.id));
+    renderDetail();
+  }
+  function onEvent(ev) {
+    if (ev.session_id === st.sel) addEvents([ev]);
+  }
+
+  // ---- lists: keyed and incremental ----
+  // A session message touches only its own row; an invite message touches only its header.
+  // renderInvites() is the full pass (initial load and SSE reconnect); it reuses existing nodes.
+  const invCards = new Map();   // invite id -> { card, label, policy, status, meta, sessions, empty }
+  const sessRows = new Map();   // session id -> { id, el, started, dot, who, status, statusText, counts, seen }
+  const noAgents = h('p', { class: 'muted' }, 'No agents yet. Create one above.');
+  // Writes only when the value differs, so unchanged nodes are never touched.
+  const setText = (n, t) => { const v = t == null ? '' : String(t); if (n.textContent !== v) n.textContent = v; };
+  const setHidden = (el, v) => { if (el.hidden !== v) el.hidden = v; };
+
+  function makeInviteCard() {
+    const rec = {
+      label: h('strong', {}),
+      policy: h('span', { class: 'badge' }),
+      status: h('span', { class: 'badge' }),
+      meta: h('div', { class: 'muted small' }),
+      sessions: h('div', {}),
+      empty: h('p', { class: 'muted small' }),
+    };
+    rec.card = h('div', { class: 'invite' },
+      h('div', { class: 'row wrap' }, rec.label, rec.policy, rec.status),
+      rec.meta, rec.sessions, rec.empty);
+    return rec;
+  }
+  function makeSessionRow(sid) {
+    const rec = {
+      id: sid, started: 0,
+      dot: h('span', { class: 'dot' }),
+      who: h('strong', {}),
+      status: h('span', { class: 'muted small' }),
+      statusText: h('div', { class: 'small' }),
+      counts: document.createTextNode(''),
+      seen: seenSpan(0),
+    };
+    rec.el = h('button', { type: 'button', class: 'row-s', dataset: { sid } },
+      rec.dot,
+      h('div', { class: 'grow' },
+        h('div', {}, rec.who, ' ', rec.status),
+        rec.statusText,
+        h('div', { class: 'muted small' }, rec.counts, rec.seen)));
+    return rec;
+  }
+  function paintInvite(rec, inv) {
+    setText(rec.label, inv.label || '(no label)');
+    setText(rec.policy, POLICY[inv.expiry_policy] || inv.expiry_policy);
+    setText(rec.status, inv.status);
+    setText(rec.meta, `${inv.redemptions} redeemed` + (inv.expires_at ? ` · expires ${fmtDate(inv.expires_at)}` : '') + ` · created ${fmtDate(inv.created_at)}`);
+    paintEmpty(rec, inv);
+  }
+  function paintEmpty(rec, inv) {
+    setText(rec.empty, inv.status === 'pending' ? 'Waiting for the person to enter the code.' : 'No sessions yet.');
+    setHidden(rec.empty, rec.sessions.childElementCount > 0);
+  }
+  function paintSession(sr, s) {
+    const m = s.machine || {};
+    const cls = 'dot ' + (DOT[s.status] || 'gray');
+    const ts = s.last_heartbeat || 0;
+    sr.started = s.started_at;
+    if (sr.dot.className !== cls) sr.dot.className = cls;
+    if (sr.dot.title !== (s.status || '')) sr.dot.title = s.status || '';
+    setText(sr.who, m.hostname ? m.hostname + (m.username ? ` (${m.username})` : '') : 'Not connected yet');
+    setText(sr.status, s.status);
+    setText(sr.statusText, s.status_text || '');
+    setText(sr.counts, `${s.actions} actions · ${s.tokens_in} in / ${s.tokens_out} out · `);
+    if (+sr.seen.dataset.ts !== ts) sr.seen.dataset.ts = ts;
+    setText(sr.seen, seenText(ts));
+    sr.el.classList.toggle('sel', sr.id === st.sel);
+  }
+  // The list is newest-first, so a new row goes before the first older row.
+  function insertSessionRow(rec, sr) {
+    let ref = null;
+    for (const c of rec.sessions.children) {
+      const other = sessRows.get(c.dataset.sid);
+      if (other && other.started < sr.started) { ref = c; break; }
+    }
+    rec.sessions.insertBefore(sr.el, ref);
+  }
+  // Header only: creates the card (at the top) if the invite is new.
+  function syncInvite(inv) {
+    let rec = invCards.get(inv.id);
+    if (!rec) {
+      rec = makeInviteCard();
+      invCards.set(inv.id, rec);
+      const root = $('invites');
+      noAgents.remove();
+      root.insertBefore(rec.card, root.firstChild);
+    }
+    paintInvite(rec, inv);
+    return rec;
+  }
+  // Full pass over one invite's sessions: reuses rows, reorders only when needed.
+  function syncInviteSessions(rec, inv) {
+    const list = [...(inv.sessions || [])].sort((a, b) => b.started_at - a.started_at);
+    const keep = new Set(list.map(s => s.id));
+    for (const el of [...rec.sessions.children]) {
+      if (keep.has(el.dataset.sid)) continue;
+      el.remove();
+      sessRows.delete(el.dataset.sid);
+    }
+    let prev = null;
+    for (const s of list) {
+      let sr = sessRows.get(s.id);
+      if (!sr) { sr = makeSessionRow(s.id); sessRows.set(s.id, sr); }
+      paintSession(sr, s);
+      const at = prev ? prev.nextSibling : rec.sessions.firstChild;
+      if (sr.el !== at) rec.sessions.insertBefore(sr.el, at);
+      prev = sr.el;
+    }
+    paintEmpty(rec, inv);
+  }
+  // Full pass over the whole list (initial load, reconnect). Existing nodes are reused.
+  function renderInvites() {
+    const root = $('invites');
+    const ids = new Set(st.invites.map(i => i.id));
+    for (const [id, rec] of [...invCards]) {
+      if (ids.has(id)) continue;
+      for (const el of rec.sessions.children) sessRows.delete(el.dataset.sid);
+      rec.card.remove();
+      invCards.delete(id);
+    }
+    if (!st.invites.length) {
+      if (root.childNodes.length !== 1 || root.firstChild !== noAgents) root.replaceChildren(noAgents);
+      return;
+    }
+    noAgents.remove();
+    let prev = null;
+    for (const inv of st.invites) {
+      const rec = syncInvite(inv);
+      syncInviteSessions(rec, inv);
+      const at = prev ? prev.nextSibling : root.firstChild;
+      if (rec.card !== at) root.insertBefore(rec.card, at);
+      prev = rec.card;
+    }
+  }
+  function markSelection() {
+    for (const sr of sessRows.values()) sr.el.classList.toggle('sel', sr.id === st.sel);
+  }
+
+  // ---- session detail ----
+  async function openSession(sid) {
+    st.sel = sid; st.events = []; st.seen = new Set(); st.lastId = 0; st.selReport = null;
+    $('log').replaceChildren();
+    $('instrErr').textContent = '';
+    markSelection();
+    renderDetail();
+    if (window.innerWidth <= 800) $('detail').scrollIntoView({ behavior: 'smooth' });
+    const r = await act($('actErr'), () => api('GET', `/api/sessions/${enc(sid)}/events`));
+    if (r && st.sel === sid) addEvents(r.events || []);
+  }
+  async function refreshEvents() {
+    const sid = st.sel;
+    if (!sid) return;
+    const r = await act($('actErr'), () => api('GET', `/api/sessions/${enc(sid)}/events?after=${st.lastId}`));
+    if (r && st.sel === sid) addEvents(r.events || []);
+  }
+  function addEvents(list) {
+    const log = $('log');
+    const nearBottom = !log.childElementCount || log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+    const added = [];
+    let outOfOrder = false, reportNew = false;
+    for (const ev of list) {
+      if (st.seen.has(ev.id)) continue;
+      st.seen.add(ev.id);
+      if (ev.id < st.lastId) outOfOrder = true;
+      st.lastId = Math.max(st.lastId, ev.id);
+      st.events.push(ev);
+      added.push(ev);
+      if (ev.type === 'report') { st.selReport = ev.data && ev.data.text; reportNew = true; }
+    }
+    if (!added.length) return;
+    if (outOfOrder) {
+      st.events.sort((a, b) => a.id - b.id);
+      log.replaceChildren(rowsFragment(st.events));
+    } else {
+      log.append(rowsFragment(added));
+    }
+    if (nearBottom) log.scrollTop = log.scrollHeight;
+    if (reportNew) renderDetail();
+  }
+  function rowsFragment(list) {
+    const f = document.createDocumentFragment();
+    for (const ev of list) f.append(logRow(ev));
+    return f;
+  }
+  function logRow(ev) {
+    const d = ev.data || {};
+    const msg = [];
+    switch (ev.type) {
+      case 'tool_call':
+        msg.push(h('b', {}, d.tool || 'tool'), ' ', argText(d.args));
+        break;
+      case 'tool_result': {
+        const out = d.output == null ? '' : String(d.output);
+        msg.push(h('span', { class: d.ok ? 'ok' : 'bad' }, d.ok ? 'ok' : 'failed'), ' ', d.tool || '');
+        if (out) msg.push(h('details', {}, h('summary', {}, firstLine(out)), h('pre', {}, out)));
+        break;
+      }
+      case 'assistant': msg.push(d.text || ''); break;
+      case 'instruction': msg.push('You: ' + (d.text || '')); break;
+      case 'error': msg.push(h('span', { class: 'bad' }, d.message || 'error')); break;
+      case 'status': msg.push(d.text || d.status || ''); break;
+      case 'report': msg.push((d.success ? 'Finished: ' : 'Stopped: ') + (d.text || '')); break;
+      default: msg.push(JSON.stringify(d).slice(0, 300));
+    }
+    return h('div', { class: 'ln' },
+      h('span', { class: 't' }, fmtTime(ev.ts)),
+      h('span', { class: 'tag ' + ev.type }, ev.type),
+      h('span', { class: 'm' }, msg));
+  }
+  function renderDetail() {
+    const f = st.sel && findSession(st.sel);
+    $('detail').hidden = !f;
+    if (!f) { st.sel = null; return; }
+    const { s, inv } = f;
+    const m = s.machine || {};
+    const alive = sessionAlive(s, inv);
+    const report = s.report || st.selReport;
+    const machine = [m.username && `user ${m.username}`, m.platform && `${m.platform} ${m.arch || ''}`].filter(Boolean).join(' · ') || 'No machine info yet';
+    $('dTitle').textContent = m.hostname || inv.label;
+    $('dHead').replaceChildren(
+      h('div', { class: 'row wrap' }, dot(s.status), h('strong', {}, s.status), s.status_text ? h('span', {}, s.status_text) : null),
+      h('div', { class: 'muted small' }, `Invite "${inv.label}" · ${POLICY[inv.expiry_policy] || inv.expiry_policy} · ${inv.status}`),
+      h('div', { class: 'muted small' }, machine),
+      h('div', { class: 'muted small' }, `started ${fmtDate(s.started_at)}${s.ended_at ? ' · ended ' + fmtDate(s.ended_at) : ''}`),
+      h('div', { class: 'small' }, `${s.actions} actions · tokens ${s.tokens_in} in / ${s.tokens_out} out · `, seenSpan(s.last_heartbeat)));
+    $('dReport').hidden = !report;
+    $('dReport').replaceChildren(h('strong', {}, 'Final report'), h('div', { class: 'reptext' }, report || ''));
+    $('instrText').disabled = !alive;
+    $('instrBtn').disabled = !alive;
+    $('instrText').placeholder = alive ? 'Send an instruction to the agent' : 'This agent is no longer running';
+    $('killBtn').disabled = !alive;
+    $('revokeBtn').disabled = inv.status === 'revoked';
+  }
+
+  // ---- actions ----
+  $('invites').addEventListener('click', e => {
+    const row = e.target.closest('[data-sid]');
+    if (row) openSession(row.dataset.sid);
+  });
+  $('dClose').addEventListener('click', () => { st.sel = null; markSelection(); renderDetail(); });
+  $('instrForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const sid = st.sel;
+    const text = $('instrText').value.trim();
+    if (!sid || !text) return;
+    const ok = await act($('instrErr'), () => api('POST', `/api/sessions/${enc(sid)}/instructions`, { text }));
+    if (ok) $('instrText').value = '';
+  });
+  $('killBtn').addEventListener('click', async () => {
+    const sid = st.sel;
+    if (!sid || !confirm('Stop this agent now? It will not finish the task.')) return;
+    await act($('actErr'), () => api('POST', `/api/sessions/${enc(sid)}/kill`));
+  });
+  $('revokeBtn').addEventListener('click', async () => {
+    const f = st.sel && findSession(st.sel);
+    if (!f || !confirm(`Revoke "${f.inv.label}"? Every live agent from this invite will be stopped.`)) return;
+    const ok = await act($('actErr'), () => api('POST', `/api/invites/${enc(f.inv.id)}/revoke`));
+    if (ok) { f.inv.status = 'revoked'; syncInvite(f.inv); renderDetail(); }
+  });
+
+  // new agent form
+  $('policy').addEventListener('change', () => { $('ttlBox').hidden = $('policy').value !== 'ttl'; });
+  $('ttlPreset').addEventListener('change', () => { $('ttlCustomBox').hidden = $('ttlPreset').value !== 'custom'; });
+  $('newForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const err = $('newErr');
+    err.textContent = '';
+    const body = {
+      label: $('nLabel').value.trim(),
+      task: $('nTask').value.trim(),
+      working_dir: $('nDir').value.trim() || '~/Desktop',
+      model: $('model').value || undefined,
+      expiry_policy: $('policy').value,
+    };
+    if (!body.label || !body.task) { err.textContent = 'Label and task are required.'; return; }
+    if (body.expiry_policy === 'ttl') {
+      body.ttl_hours = $('ttlPreset').value === 'custom' ? Number($('ttlCustom').value) : Number($('ttlPreset').value);
+      if (!(body.ttl_hours > 0)) { err.textContent = 'Enter a number of hours.'; return; }
+    }
+    $('newBtn').disabled = true;
+    const r = await act(err, () => api('POST', '/api/invites', body));
+    $('newBtn').disabled = false;
+    if (!r) return;
+    upsertInvite(r.invite);
+    $('codeBig').textContent = r.code;
+    $('cmd').textContent = r.command;
+    $('result').hidden = false;
+    syncInvite(findInvite(r.invite.id));
+  });
+  async function copy(text, btn) {
+    const label = btn.textContent;
+    try { await navigator.clipboard.writeText(text); btn.textContent = 'Copied'; }
+    catch (e) { btn.textContent = 'Copy failed'; }
+    setTimeout(() => { btn.textContent = label; }, 1500);
+  }
+  $('copyCode').addEventListener('click', e => copy($('codeBig').textContent, e.currentTarget));
+  $('copyCmd').addEventListener('click', e => copy($('cmd').textContent, e.currentTarget));
+
+  // token form
+  $('tokenForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const t = $('tokenInput').value.trim();
+    if (!t) { $('tokenErr').textContent = 'Paste the admin token.'; return; }
+    st.token = t;
+    try { localStorage.setItem(KEY, t); } catch (e) {}
+    $('tokenInput').value = '';
+    start();
+  });
+  $('tokenCancel').addEventListener('click', () => start());
+  $('changeToken').addEventListener('click', e => { e.preventDefault(); showAuth('', true); });
+
+  // keep relative times fresh
+  setInterval(() => document.querySelectorAll('.seen').forEach(n => setText(n, seenText(+n.dataset.ts))), 5000);
+
+  // boot
+  let saved = null;
+  try { saved = localStorage.getItem(KEY); } catch (e) {}
+  if (saved) { st.token = saved; start(); }
+  else showAuth('', false);
+})();
+</script>
+</body>
+</html>

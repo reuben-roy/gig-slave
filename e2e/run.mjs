@@ -1,0 +1,666 @@
+#!/usr/bin/env node
+// End-to-end test: real server + real CLI, against the scripted mock upstream.
+// Run with `npm run e2e` from the repo root. Exit 0 on pass, 1 on the first failure.
+
+import { spawn } from "node:child_process";
+import { existsSync, promises as fsp } from "node:fs";
+import net from "node:net";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { startMock } from "../mock/server.mjs";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(HERE, "..");
+const TMP = path.join(HERE, ".tmp");
+const DESKTOP = path.join(TMP, "Desktop");
+const CLI_TMP = path.join(TMP, "tmp");
+const DB_PATH = path.join(TMP, "db", "gig-slave.db");
+
+const ADMIN_TOKEN = "e2e-admin";
+const UPSTREAM_KEY = "mock-upstream-key";
+const MODEL = "deepseek-v4-pro";
+const TTL_MODEL = "deepseek-flash";
+const CLI_VERSION = "0.1.0";
+const CODE_RE = /^[A-Z2-9]{4}-[A-Z2-9]{4}$/;
+const MACHINE = {
+  hostname: "e2e-mac",
+  platform: "darwin",
+  release: "e2e",
+  arch: "arm64",
+  username: "e2e",
+};
+const CHAT_BODY = {
+  model: "whatever",
+  messages: [{ role: "user", content: "hi" }],
+  stream: false,
+};
+const DESKTOP_FILES = {
+  "photo1.png": "fake png bytes, photo one\n",
+  "photo2.jpg": "fake jpg bytes, photo two\n",
+  "report.pdf": "%fake pdf report\n",
+  "notes.txt": "notes: buy milk\n",
+  "song.mp3": "fake mp3 bytes, song\n",
+};
+
+// ---------- failure plumbing ----------
+
+class E2EFailure extends Error {
+  constructor(step, message) {
+    super(message);
+    this.name = "E2EFailure";
+    this.step = step;
+  }
+}
+
+function assert(cond, step, msg) {
+  if (!cond) throw new E2EFailure(step, msg);
+}
+
+async function step(name, fn) {
+  try {
+    await fn(name);
+  } catch (err) {
+    if (err instanceof E2EFailure) throw err;
+    throw new E2EFailure(name, err?.message ?? String(err));
+  }
+  console.log(`✓ ${name}`);
+}
+
+class Tail {
+  constructor(max = 64 * 1024) {
+    this.max = max;
+    this.text = "";
+  }
+  push(chunk) {
+    this.text += chunk.toString("utf8");
+    if (this.text.length > this.max) this.text = this.text.slice(-this.max);
+  }
+  tail(lines = 40) {
+    return this.text.split("\n").slice(-lines).join("\n").trimEnd();
+  }
+}
+
+// ---------- helpers ----------
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function waitFor(fn, timeoutMs, label) {
+  const deadline = Date.now() + timeoutMs;
+  let lastErr = null;
+  while (Date.now() < deadline) {
+    try {
+      const value = await fn();
+      if (value) return value;
+    } catch (err) {
+      if (err instanceof E2EFailure) throw err;
+      lastErr = err;
+    }
+    await sleep(200);
+  }
+  const detail = lastErr ? ` (last error: ${lastErr.message})` : "";
+  throw new Error(`timed out after ${timeoutMs}ms waiting for ${label}${detail}`);
+}
+
+async function api(method, p, body, token, timeoutMs = 10000) {
+  const headers = {};
+  if (body !== undefined) headers["content-type"] = "application/json";
+  if (token) headers.authorization = `Bearer ${token}`;
+  const res = await fetch(`${state.serverUrl}${p}`, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  const text = await res.text();
+  let json = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = null;
+  }
+  return { status: res.status, json, text };
+}
+
+async function fetchInvite(id) {
+  const r = await api("GET", "/api/invites", undefined, ADMIN_TOKEN);
+  if (r.status !== 200) throw new Error(`GET /api/invites returned ${r.status}`);
+  return (r.json?.invites ?? []).find((i) => i.id === id) ?? null;
+}
+
+// Opens the admin SSE stream in the background and collects parsed messages.
+function openSse(url) {
+  const ac = new AbortController();
+  const conn = { ac, status: null, contentType: null, error: null, messages: [] };
+  (async () => {
+    try {
+      const res = await fetch(url, { signal: ac.signal, headers: { accept: "text/event-stream" } });
+      conn.status = res.status;
+      conn.contentType = res.headers.get("content-type");
+      if (!res.ok || !res.body) {
+        conn.error = `HTTP ${res.status}`;
+        return;
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+        let idx;
+        while ((idx = buf.indexOf("\n\n")) !== -1) {
+          const frame = buf.slice(0, idx);
+          buf = buf.slice(idx + 2);
+          let event = "message";
+          const dataLines = [];
+          for (const line of frame.split("\n")) {
+            if (!line || line.startsWith(":")) continue; // keep-alive comments
+            if (line.startsWith("event:")) event = line.slice(6).trim();
+            else if (line.startsWith("data:")) dataLines.push(line.slice(5).replace(/^ /, ""));
+          }
+          if (dataLines.length === 0) continue;
+          const raw = dataLines.join("\n");
+          let data;
+          try {
+            data = JSON.parse(raw);
+          } catch {
+            data = raw;
+          }
+          conn.messages.push({ event, data });
+        }
+      }
+    } catch (err) {
+      if (!ac.signal.aborted) conn.error = err.message;
+    }
+  })();
+  return conn;
+}
+
+function redactAuth(auth) {
+  if (typeof auth === "string" && auth.startsWith("Bearer ") && auth !== `Bearer ${UPSTREAM_KEY}`) {
+    return "\"Bearer <redacted>\"";
+  }
+  return JSON.stringify(auth);
+}
+
+function hasExited(child) {
+  return child.exitCode !== null || child.signalCode !== null;
+}
+
+function waitExit(child, ms) {
+  if (hasExited(child)) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), ms);
+    child.once("exit", () => {
+      clearTimeout(timer);
+      resolve(true);
+    });
+  });
+}
+
+async function stopChild(child, graceMs = 3000) {
+  if (!child || hasExited(child)) return;
+  child.kill("SIGTERM");
+  if (!(await waitExit(child, graceMs))) {
+    child.kill("SIGKILL");
+    await waitExit(child, 2000);
+  }
+}
+
+// Every child we spawn is tracked here so teardown and SIGINT can reach it.
+const state = {
+  serverUrl: "",
+  server: null,
+  mock: null,
+  sse: null,
+  lastCli: null,
+  live: new Set(),
+  logs: { build: new Tail(), server: new Tail() },
+};
+
+function spawnTracked(cmd, args, { cwd, env, tail }) {
+  const child = spawn(cmd, args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
+  child.out = tail;
+  const onData = (d) => tail.push(d);
+  child.stdout.on("data", onData);
+  child.stderr.on("data", onData);
+  child.on("error", (err) => tail.push(Buffer.from(`[spawn error] ${err.message}\n`)));
+  state.live.add(child);
+  child.once("exit", () => state.live.delete(child));
+  return child;
+}
+
+function runCli(code) {
+  return spawnTracked(process.execPath, [path.join(ROOT, "cli/dist/index.js"), code], {
+    cwd: ROOT,
+    env: { ...process.env, GIG_SLAVE_SERVER: state.serverUrl, TMPDIR: CLI_TMP },
+    tail: new Tail(),
+  });
+}
+
+function killAllNow() {
+  for (const child of state.live) {
+    try {
+      child.kill("SIGKILL");
+    } catch {
+      // already gone
+    }
+  }
+}
+
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.on("error", reject);
+    srv.listen(0, "127.0.0.1", () => {
+      const { port } = srv.address();
+      srv.close(() => resolve(port));
+    });
+  });
+}
+
+async function runBuild() {
+  const child = spawnTracked("npm", ["run", "build"], {
+    cwd: ROOT,
+    env: process.env,
+    tail: state.logs.build,
+  });
+  if (!(await waitExit(child, 180000))) {
+    await stopChild(child);
+    return { code: null, note: "timed out after 180s" };
+  }
+  return { code: child.exitCode, note: child.signalCode ? `signal ${child.signalCode}` : "" };
+}
+
+async function listTempLeftovers() {
+  const names = await fsp.readdir(CLI_TMP);
+  return names.filter((n) => n.startsWith("gig-slave-"));
+}
+
+function printTail(title, tail) {
+  console.error(`--- ${title} ---`);
+  console.error(tail.tail(40) || "(no output)");
+}
+
+function printLogs(failedStep) {
+  if (failedStep && failedStep.startsWith("build")) printTail("build output", state.logs.build);
+  if (state.logs.server.text) printTail("server output (last lines)", state.logs.server);
+  if (state.lastCli) printTail("CLI output (last lines)", state.lastCli.out);
+}
+
+// ---------- steps ----------
+
+async function runSteps() {
+  await step("fixtures created", async (s) => {
+    await fsp.rm(TMP, { recursive: true, force: true });
+    await fsp.mkdir(DESKTOP, { recursive: true });
+    await fsp.mkdir(CLI_TMP, { recursive: true });
+    await fsp.mkdir(path.dirname(DB_PATH), { recursive: true });
+    for (const [name, content] of Object.entries(DESKTOP_FILES)) {
+      await fsp.writeFile(path.join(DESKTOP, name), content);
+    }
+    const names = (await fsp.readdir(DESKTOP)).sort().join(",");
+    const expected = Object.keys(DESKTOP_FILES).sort().join(",");
+    assert(names === expected, s, `Desktop fixture contains "${names}", expected "${expected}"`);
+  });
+
+  await step("build (npm run build)", async (s) => {
+    const r = await runBuild();
+    assert(r.code === 0, s, `npm run build failed (exit ${r.code}${r.note ? `, ${r.note}` : ""})`);
+  });
+
+  await step("mock upstream started", async (s) => {
+    state.mock = await startMock({ apiKey: UPSTREAM_KEY });
+    assert(/^http:\/\/127\.0\.0\.1:\d+\/v1$/.test(state.mock.url), s, `unexpected mock url ${state.mock.url}`);
+  });
+
+  await step("server started", async (s) => {
+    const port = await freePort();
+    state.serverUrl = `http://127.0.0.1:${port}`;
+    state.server = spawnTracked(process.execPath, ["server/dist/index.js"], {
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        PORT: String(port),
+        ADMIN_TOKEN,
+        UPSTREAM_BASE_URL: state.mock.url,
+        UPSTREAM_API_KEY: UPSTREAM_KEY,
+        DEFAULT_MODEL: TTL_MODEL,
+        MODELS: `${TTL_MODEL},${MODEL}`,
+        PUBLIC_URL: state.serverUrl,
+        DB_PATH,
+      },
+      tail: state.logs.server,
+    });
+    await waitFor(async () => {
+      if (hasExited(state.server)) {
+        throw new E2EFailure(
+          s,
+          `server exited early (code ${state.server.exitCode}, signal ${state.server.signalCode})`,
+        );
+      }
+      const r = await api("GET", "/api/config", undefined, ADMIN_TOKEN, 2000);
+      return r.status === 200;
+    }, 15000, "server GET /api/config to return 200");
+  });
+
+  await step("GET / serves the dashboard HTML", async (s) => {
+    const r = await fetch(`${state.serverUrl}/`, { signal: AbortSignal.timeout(5000) });
+    const contentType = r.headers.get("content-type") ?? "";
+    await r.text();
+    assert(r.status === 200, s, `GET / returned ${r.status}`);
+    assert(contentType.includes("text/html"), s, `GET / content-type is "${contentType}", expected text/html`);
+  });
+
+  await step("admin API rejects requests without token", async (s) => {
+    const r = await api("GET", "/api/invites");
+    assert(r.status === 401, s, `GET /api/invites without token returned ${r.status}, expected 401`);
+  });
+
+  await step("SSE stream connected", async (s) => {
+    state.sse = openSse(`${state.serverUrl}/api/stream?token=${ADMIN_TOKEN}`);
+    await waitFor(() => state.sse.status !== null || state.sse.error, 5000, "SSE response headers");
+    assert(
+      state.sse.status === 200,
+      s,
+      `GET /api/stream returned ${state.sse.status}${state.sse.error ? ` (${state.sse.error})` : ""}`,
+    );
+    assert(
+      (state.sse.contentType ?? "").includes("text/event-stream"),
+      s,
+      `SSE content-type is "${state.sse.contentType}"`,
+    );
+  });
+
+  let inv1 = null;
+  await step("invite created (one_use)", async (s) => {
+    const r = await api(
+      "POST",
+      "/api/invites",
+      {
+        label: "E2E Desktop",
+        task: "Organize my Desktop into folders by type.",
+        working_dir: DESKTOP,
+        model: MODEL,
+        expiry_policy: "one_use",
+      },
+      ADMIN_TOKEN,
+    );
+    assert(r.status === 201, s, `POST /api/invites returned ${r.status}: ${r.text}`);
+    const { invite, code, command } = r.json ?? {};
+    assert(typeof code === "string" && CODE_RE.test(code), s, `code ${JSON.stringify(code)} does not match XXXX-XXXX`);
+    assert(command === `npx gig-slave ${code}`, s, `command is ${JSON.stringify(command)}, expected "npx gig-slave ${code}"`);
+    assert(invite?.id, s, "response has no invite.id");
+    inv1 = { id: invite.id, code };
+  });
+
+  await step("CLI redeemed code and exited 0", async (s) => {
+    const cli = runCli(inv1.code);
+    state.lastCli = cli;
+    if (!(await waitExit(cli, 90000))) {
+      await stopChild(cli);
+      throw new E2EFailure(s, "CLI did not exit within 90s (killed it)");
+    }
+    assert(cli.exitCode === 0, s, `CLI exited with code ${cli.exitCode} (signal ${cli.signalCode})`);
+  });
+
+  await step("Desktop organized with originals intact", async (s) => {
+    const moved = {
+      "Images/photo1.png": "photo1.png",
+      "Images/photo2.jpg": "photo2.jpg",
+      "Documents/report.pdf": "report.pdf",
+      "Documents/notes.txt": "notes.txt",
+      "Music/song.mp3": "song.mp3",
+    };
+    for (const [rel, original] of Object.entries(moved)) {
+      const p = path.join(DESKTOP, rel);
+      assert(existsSync(p), s, `${rel} is missing`);
+      const got = await fsp.readFile(p);
+      assert(got.equals(Buffer.from(DESKTOP_FILES[original])), s, `${rel} content differs from the original`);
+    }
+    for (const name of Object.keys(DESKTOP_FILES)) {
+      assert(!existsSync(path.join(DESKTOP, name)), s, `${name} is still at the top level of Desktop`);
+    }
+    const undoPath = path.join(DESKTOP, ".gig-slave-undo.json");
+    assert(existsSync(undoPath), s, ".gig-slave-undo.json was not written");
+    let undo;
+    try {
+      undo = JSON.parse(await fsp.readFile(undoPath, "utf8"));
+    } catch (err) {
+      throw new E2EFailure(s, `.gig-slave-undo.json does not parse: ${err.message}`);
+    }
+    assert(Array.isArray(undo) && undo.length === 5, s, `undo log is not an array of 5 entries: ${JSON.stringify(undo)}`);
+  });
+
+  await step("dashboard shows completed invite, report and events", async (s) => {
+    let inv = null;
+    const deadline = Date.now() + 5000;
+    for (;;) {
+      inv = await fetchInvite(inv1.id);
+      const done = (inv?.sessions ?? []).filter((x) => x.status === "done");
+      if (inv?.status === "completed" && done.length === 1) break;
+      if (Date.now() > deadline) break;
+      await sleep(200);
+    }
+    assert(inv, s, "invite is missing from GET /api/invites");
+    assert(inv.status === "completed", s, `invite status is "${inv.status}", expected "completed"`);
+    const done = (inv.sessions ?? []).filter((x) => x.status === "done");
+    const statuses = (inv.sessions ?? []).map((x) => x.status);
+    assert(done.length === 1, s, `expected exactly one "done" session, got statuses [${statuses.join(", ")}]`);
+    const sess = done[0];
+    assert(typeof sess.report === "string" && sess.report.includes("Images"), s, `report is ${JSON.stringify(sess.report)}`);
+    assert(sess.actions >= 2, s, `session actions=${sess.actions}, expected >= 2`);
+    assert(sess.tokens_in > 0, s, `session tokens_in=${sess.tokens_in}, expected > 0`);
+    assert(sess.machine && sess.machine.hostname, s, `session machine.hostname missing: ${JSON.stringify(sess.machine)}`);
+
+    const ev = await api("GET", `/api/sessions/${sess.id}/events`, undefined, ADMIN_TOKEN);
+    assert(ev.status === 200, s, `GET /api/sessions/:id/events returned ${ev.status}`);
+    const events = ev.json?.events ?? [];
+    assert(
+      events.some((e) => e.type === "tool_call" && e.data?.tool === "bash"),
+      s,
+      `no tool_call event with tool "bash" among ${events.length} events`,
+    );
+    assert(events.some((e) => e.type === "tool_result"), s, "no tool_result event");
+    assert(events.some((e) => e.type === "report"), s, "no report event");
+
+    await waitFor(
+      () => state.sse.messages.some((m) => m.event === "event"),
+      5000,
+      "an 'event' message on the admin SSE stream",
+    );
+    await waitFor(
+      () => state.sse.messages.some((m) => m.event === "session" && m.data?.id === sess.id),
+      5000,
+      `a 'session' message for ${sess.id} on the admin SSE stream`,
+    );
+  });
+
+  await step("proxy forced the invite model and hid the session token", async (s) => {
+    const reqs = state.mock.requests;
+    assert(reqs.length >= 3, s, `mock upstream saw ${reqs.length} requests, expected >= 3`);
+    reqs.forEach((r, i) => {
+      assert(
+        r.model === MODEL,
+        s,
+        `upstream request #${i} had model "${r.model}", expected "${MODEL}"`,
+      );
+      assert(
+        r.auth === `Bearer ${UPSTREAM_KEY}`,
+        s,
+        `upstream request #${i} had Authorization ${redactAuth(r.auth)}, expected the upstream key`,
+      );
+    });
+  });
+
+  await step("one_use code cannot be redeemed again", async (s) => {
+    const r = await api(
+      "POST",
+      "/agent/redeem",
+      { code: inv1.code, machine: MACHINE, cli_version: CLI_VERSION },
+      undefined,
+    );
+    assert(r.status === 403, s, `second redeem returned ${r.status}, expected 403: ${r.text}`);
+  });
+
+  await step("CLI temp dir removed after run", async (s) => {
+    const left = await listTempLeftovers();
+    assert(left.length === 0, s, `leftover entries in ${CLI_TMP}: ${left.join(", ")}`);
+  });
+
+  await step("expired ttl session gets 403 from /v1; heartbeat says kill", async (s) => {
+    const created = await api(
+      "POST",
+      "/api/invites",
+      {
+        label: "E2E TTL",
+        task: "Organize my Desktop into folders by type.",
+        working_dir: DESKTOP,
+        model: TTL_MODEL,
+        expiry_policy: "ttl",
+        ttl_hours: 0.0007,
+      },
+      ADMIN_TOKEN,
+    );
+    assert(created.status === 201, s, `POST /api/invites (ttl) returned ${created.status}: ${created.text}`);
+    const { invite, code } = created.json;
+    const expiresAt = invite.expires_at;
+    assert(typeof expiresAt === "number", s, `invite.expires_at is ${JSON.stringify(expiresAt)}`);
+
+    const red = await api("POST", "/agent/redeem", { code, machine: MACHINE, cli_version: CLI_VERSION });
+    assert(red.status === 200, s, `redeem returned ${red.status}: ${red.text}`);
+    const token = red.json?.session_token;
+    assert(typeof token === "string" && token.length > 0, s, "redeem response has no session_token");
+
+    assert(Date.now() < expiresAt, s, "ttl window (~2.5s) elapsed before the first /v1 call; machine too slow");
+    const before = await api("POST", "/v1/chat/completions", CHAT_BODY, token);
+    assert(before.status === 200, s, `/v1 call before expiry returned ${before.status}: ${before.text}`);
+    const last = state.mock.requests.at(-1);
+    assert(last?.model === TTL_MODEL, s, `upstream saw model "${last?.model}", expected forced "${TTL_MODEL}"`);
+    assert(last?.auth === `Bearer ${UPSTREAM_KEY}`, s, `upstream saw Authorization ${redactAuth(last?.auth)}`);
+
+    const wait = expiresAt + 3000 - Date.now();
+    if (wait > 0) await sleep(wait);
+
+    const after = await api("POST", "/v1/chat/completions", CHAT_BODY, token);
+    assert(after.status === 403, s, `/v1 call after expiry returned ${after.status}, expected 403`);
+
+    const hb = await api("POST", "/agent/heartbeat", { status: "idle", status_text: "e2e" }, token);
+    assert(hb.status === 200, s, `heartbeat after expiry returned ${hb.status}: ${hb.text}`);
+    assert(hb.json?.kill === true, s, `heartbeat after expiry returned kill=${hb.json?.kill}, expected true`);
+  });
+
+  await step("kill stops the CLI and removes its temp dir", async (s) => {
+    const created = await api(
+      "POST",
+      "/api/invites",
+      {
+        label: "E2E Kill",
+        task: "[e2e:slow] Please wait.",
+        working_dir: DESKTOP,
+        model: MODEL,
+        expiry_policy: "one_use",
+      },
+      ADMIN_TOKEN,
+    );
+    assert(created.status === 201, s, `POST /api/invites (slow) returned ${created.status}: ${created.text}`);
+    const { invite, code } = created.json;
+
+    const cli = runCli(code);
+    state.lastCli = cli;
+    let sessionId = null;
+    await waitFor(async () => {
+      if (hasExited(cli)) {
+        throw new E2EFailure(
+          s,
+          `CLI exited early (code ${cli.exitCode}, signal ${cli.signalCode}) before the session started working`,
+        );
+      }
+      const inv = await fetchInvite(invite.id);
+      const sess = inv?.sessions?.[0];
+      if (!sess) return false;
+      sessionId = sess.id;
+      if (sess.status === "working") return true;
+      const ev = await api("GET", `/api/sessions/${sess.id}/events`, undefined, ADMIN_TOKEN);
+      return (ev.json?.events ?? []).some((e) => e.type === "tool_call");
+    }, 20000, "the slow session to start working");
+
+    const kill = await api("POST", `/api/sessions/${sessionId}/kill`, {}, ADMIN_TOKEN);
+    assert(kill.status === 200 && kill.json?.ok === true, s, `kill returned ${kill.status}: ${kill.text}`);
+
+    if (!(await waitExit(cli, 20000))) {
+      await stopChild(cli);
+      throw new E2EFailure(s, "CLI did not exit within 20s after kill (killed it)");
+    }
+    assert(cli.exitCode !== 0, s, "CLI exited with code 0 after kill, expected a nonzero exit");
+
+    let status = null;
+    await waitFor(async () => {
+      const inv = await fetchInvite(invite.id);
+      status = inv?.sessions?.[0]?.status ?? null;
+      return status && !["connecting", "working", "idle"].includes(status);
+    }, 5000, "the killed session to reach a final status");
+    assert(status === "killed", s, `session status is "${status}", expected "killed"`);
+
+    const left = await listTempLeftovers();
+    assert(left.length === 0, s, `leftover entries in ${CLI_TMP} after kill: ${left.join(", ")}`);
+  });
+
+  await step("invalid code rejected with 401", async (s) => {
+    const r = await api(
+      "POST",
+      "/agent/redeem",
+      { code: "ZZZZ-ZZZZ", machine: MACHINE, cli_version: CLI_VERSION },
+      undefined,
+    );
+    assert(r.status === 401, s, `redeem with invalid code returned ${r.status}, expected 401`);
+  });
+}
+
+async function teardown() {
+  if (state.sse) state.sse.ac.abort();
+  if (state.server) await stopChild(state.server, 3000);
+  await Promise.all([...state.live].map((child) => stopChild(child, 2000)));
+  if (state.mock) await state.mock.close().catch(() => {});
+}
+
+async function main() {
+  process.on("SIGINT", () => {
+    killAllNow();
+    console.error("\n✗ interrupted: child processes killed");
+    process.exit(130);
+  });
+  process.on("SIGTERM", () => {
+    killAllNow();
+    process.exit(143);
+  });
+
+  const watchdog = setTimeout(() => {
+    console.error("✗ overall: e2e exceeded its 240s budget");
+    printLogs(null);
+    killAllNow();
+    process.exit(1);
+  }, 240000);
+
+  let failure = null;
+  try {
+    await runSteps();
+  } catch (err) {
+    failure = err;
+  } finally {
+    clearTimeout(watchdog);
+    await teardown();
+  }
+
+  if (failure) {
+    const failedStep = failure.step ?? "unexpected";
+    console.error(`✗ ${failedStep}: ${failure.message}`);
+    printLogs(failedStep);
+    process.exit(1);
+  }
+
+  console.log("✓ e2e passed");
+  process.exit(0);
+}
+
+main();
