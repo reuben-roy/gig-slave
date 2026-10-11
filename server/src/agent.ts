@@ -19,6 +19,7 @@ const failures = new Map<string, number[]>();
 
 function clientIp(c: Context<{ Bindings: HttpBindings }>) {
   return (
+    c.req.header("x-gig-client-ip") || // set by the Worker front door
     c.req.header("cf-connecting-ip") ||
     c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
     c.env?.incoming?.socket?.remoteAddress ||

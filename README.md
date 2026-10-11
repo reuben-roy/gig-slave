@@ -52,21 +52,29 @@ npm start
 
 The server reads `.env` from the repo root and listens on `PORT` (8787). Open http://localhost:8787 for the dashboard. The database lives at `server/data/gig-slave.db` by default.
 
-## 3. Expose it with a Cloudflare Tunnel
+## 3. Stable public URL (Cloudflare Worker + quick tunnel)
+
+Quick tunnels get a new `trycloudflare.com` address on every start, so a tiny Worker on `workers.dev` gives you one permanent address that forwards to whichever tunnel is current. No domain needed.
+
+One-time (needs `brew install cloudflared` and a free Cloudflare account):
 
 ```bash
-brew install cloudflared
+cd worker && npx wrangler login && npx wrangler deploy
 ```
+
+It prints your permanent address, e.g. `https://gig-slave.<account>.workers.dev`. Put it in `.env` as `PUBLIC_URL` and in `cli/src/server-url.ts` (step 4).
+
+Every time you want the server reachable, in a second terminal:
 
 ```bash
-cloudflared tunnel --url http://localhost:8787
+npm run tunnel
 ```
 
-It prints a `https://<random>.trycloudflare.com` URL. Put it in `.env` as `PUBLIC_URL` and restart the server. Quick tunnels get a new URL each time they start; for a stable URL, set up a named tunnel.
+It starts the tunnel and updates the Worker's forwarding address automatically. Keep it running while the demo is live.
 
 ## 4. Bake the server URL into the CLI
 
-Edit [cli/src/server-url.ts](cli/src/server-url.ts) and set `BAKED_SERVER_URL` to the same tunnel URL. For local testing you can skip this and use the override:
+Edit [cli/src/server-url.ts](cli/src/server-url.ts) and set `BAKED_SERVER_URL` to the permanent Worker address from step 3. For local testing you can use the override:
 
 ```bash
 GIG_SLAVE_SERVER=http://localhost:8787 node cli/dist/index.js

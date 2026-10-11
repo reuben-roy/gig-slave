@@ -1,0 +1,8 @@
+name = "gig-slave"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+workers_dev = true
+
+# Set by scripts/tunnel.mjs on every deploy: the current trycloudflare.com address.
+[vars]
+TARGET = ""

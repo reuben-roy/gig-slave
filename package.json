@@ -10,7 +10,8 @@
     "dev:server": "npm run dev -w server",
     "build": "npm run build -w server && npm run build -w cli",
     "e2e": "node e2e/run.mjs",
-    "start": "npm run start -w server"
+    "start": "npm run start -w server",
+    "tunnel": "node scripts/tunnel.mjs"
   },
   "engines": {
     "node": ">=22.13"
