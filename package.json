@@ -1,5 +1,5 @@
 {
-  "name": "gig-slave-monorepo",
+  "name": "gigagent-monorepo",
   "private": true,
   "workspaces": [
     "server",
