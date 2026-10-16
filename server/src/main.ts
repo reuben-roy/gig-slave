@@ -78,7 +78,7 @@ const server = serve(
     port: config.port,
   },
   () => {
-    console.log(`GigAgent server listening on http://localhost:${config.port} (public url: ${config.publicUrl})`);
+    console.log(`Hired Gun server listening on http://localhost:${config.port} (public url: ${config.publicUrl})`);
   },
 );
 

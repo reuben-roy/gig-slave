@@ -1,7 +1,7 @@
 {
   "name": "gigagent",
   "version": "0.2.0",
-  "description": "GigAgent: type a code and a trusted helper does one job on your Mac, then removes itself.",
+  "description": "Hired Gun (formerly GigAgent): type a code and a helper does one job on your Mac, then removes itself.",
   "type": "module",
   "bin": {
     "gigagent": "dist/bin.js"

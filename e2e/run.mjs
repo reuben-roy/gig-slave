@@ -442,13 +442,13 @@ async function runSteps() {
     }, 15000, "server GET /api/config to return 200");
   });
 
-  await step("GET / serves the GigAgent landing page", async (s) => {
+  await step("GET / serves the Hired Gun landing page", async (s) => {
     const r = await fetch(`${state.serverUrl}/`, { signal: AbortSignal.timeout(5000) });
     const contentType = r.headers.get("content-type") ?? "";
     const body = await r.text();
     assert(r.status === 200, s, `GET / returned ${r.status}`);
     assert(contentType.includes("text/html"), s, `GET / content-type is "${contentType}", expected text/html`);
-    assert(body.includes("GigAgent"), s, "GET / HTML does not contain \"GigAgent\"");
+    assert(body.includes("Hired Gun"), s, "GET / HTML does not contain \"Hired Gun\"");
   });
 
   await step("GET /dashboard serves the operator dashboard", async (s) => {

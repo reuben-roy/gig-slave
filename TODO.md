@@ -1,6 +1,6 @@
 # Your TODOs (things only you can do)
 
-`npm run e2e` passes offline against the mock. These steps get the real GigAgent running on Vercel.
+`npm run e2e` passes offline against the mock. These steps get the real Hired Gun (still deployed as the `gigagent` project) running on Vercel.
 
 ## Vercel (done 2026-10-14)
 - [x] Project `gigagent` (team reubenroy's projects, Hobby), Root Directory `server`, linked from the repo root (`.vercel/`).
@@ -27,7 +27,16 @@
 - [ ] **Set up an external pinger for `/api/cron/sweep`** (or a Pro-plan Vercel cron) for timely lost-connection alerts. Hobby cron only runs daily.
 - [ ] **Decide whether to add real enforcement** (sandbox/allow-list) for the agent's file rules. Today they are instructions only.
 - [ ] **Rename the GitHub repo and local folder** from `gig-slave` to `gigagent`, if you want the names to match.
-- [ ] **Commit, then push to GitHub?** The GigAgent rework and Vercel setup are not committed yet. No remote yet.
+- [ ] **Commit, then push to GitHub?** The Hired Gun rework and Vercel setup are not committed yet. No remote yet.
+
+## Hired Gun rebrand: follow-ups for you (2026-10-16)
+Nothing below was done by the redesign; each needs your decision or your accounts.
+- [ ] **Republish the CLI** (new on-screen copy ships in `cli/dist`): bump the version and `npm publish --access public` from `cli/`. Until then recipients still see the old "GigAgent" header.
+- [ ] **Vercel env `NOTIFY_FROM`**: if it is set to `GigAgent <...>`, change it to `Hired Gun <...>` (the code default already changed).
+- [ ] **Decide whether to rename the npm package / command** (`npx gigagent`). Deliberately not done: it needs a new package name, a deprecation notice on `gigagent`, and updated baked URLs and docs.
+- [ ] **Optional custom domain** instead of `gigagent-beta.vercel.app` (then update `BAKED_SERVER_URL` and `PUBLIC_URL`).
+- [ ] **Social preview image**: `og:image` is a relative `/assets/og.png`; some crawlers want an absolute URL, which needs your final domain.
+- [ ] Rename the GitHub repo / local folder `gig-slave` if you want it to match the new name.
 
 ## Done
 - [x] `.env` is set up for local runs (model key, random admin token).

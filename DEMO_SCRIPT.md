@@ -1,4 +1,4 @@
-# GigAgent demo script (target 4:45, hard cap 5:00)
+# Hired Gun demo script (target 4:45, hard cap 5:00)
 
 About 650 words of voiceover. At a relaxed pace that's around 4:30, which leaves room for pauses while things load.
 
@@ -30,7 +30,7 @@ About 650 words of voiceover. At a relaxed pace that's around 4:30, which leaves
 **ON SCREEN:** The dashboard.
 
 **YOU:**
-> "GigAgent is option three. I type what needs doing on *my* screen. Dad types one command on *his*. An AI agent does the job on his Mac while I watch it live from here.
+> "Hired Gun is option three. I type what needs doing on *my* screen. Dad types one command on *his*. An AI agent does the job on his Mac while I watch it live from here.
 >
 > It runs on a small, cheap model, so a whole job costs less than the phone call. And it has rules: it stays in one folder, never deletes anything, and writes down every move so the whole thing can be undone."
 
@@ -102,7 +102,7 @@ About 650 words of voiceover. At a relaxed pace that's around 4:30, which leaves
 **YOU:**
 > "Now. Sometimes you hire Priya… and sometimes you have to let Kevin go. And Kevin still has a company laptop and *opinions*.
 >
-> So naturally I thought: GigAgent, axe Kevin's machine. Lock him out, encrypt the disk, wipe the—"
+> So naturally I thought: Hired Gun, axe Kevin's machine. Lock him out, encrypt the disk, wipe the—"
 
 **ON SCREEN:** Freeze frame. Big red stamp: **"NOT IN v0."**
 
@@ -114,7 +114,7 @@ About 650 words of voiceover. At a relaxed pace that's around 4:30, which leaves
 **ON SCREEN:** Go back to a running session (or start a quick one) and hover over the **Kill** button.
 
 **YOU:**
-> "What you *can* fire today is GigAgent itself. If it ever does something you don't like…"
+> "What you *can* fire today is Hired Gun itself. If it ever does something you don't like…"
 
 **ON SCREEN:** Click **Kill**. The session status changes to `killed` and the Terminal side shows it shutting down and cleaning up.
 
@@ -130,7 +130,7 @@ About 650 words of voiceover. At a relaxed pace that's around 4:30, which leaves
 **YOU:**
 > "Total cost of fixing Dad's computer: [read the real number off the dashboard]. The phone call alone would have cost me forty minutes and a small piece of my soul.
 >
-> GigAgent. Write the job, send the code, go make tea."
+> Hired Gun. Write the job, send the code, go make tea."
 
 **ON SCREEN:** End card: **`npx gigagent`**, plus the GitHub link if it's public by then.
 

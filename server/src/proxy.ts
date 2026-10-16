@@ -146,7 +146,7 @@ proxy.post("/chat/completions", async (c) => {
   const headers: Record<string, string> = {
     "content-type": "application/json",
     "http-referer": config.publicUrl,
-    "x-title": "GigAgent",
+    "x-title": "Hired Gun",
   };
   let url: string;
   if (viaGateway) {

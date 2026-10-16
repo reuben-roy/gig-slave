@@ -1,9 +1,9 @@
-# GigAgent (formerly gig-slave) — instructions for Claude Code
+# Hired Gun (formerly GigAgent, formerly gig-slave) — instructions for Claude Code
 
 Read PLAN.md (architecture) and CONTRACT.md (binding API contract) before writing code. CONTRACT.md wins on any conflict, including with this file.
 
 ## Locked decisions
-- Product name **GigAgent**; identifiers `gigagent`. macOS only for the CLI. Node 22+.
+- Product name **Hired Gun** (display); identifiers stay `gigagent` (npm package, `npx gigagent`, `GIGAGENT_*`, `.gigagent-undo.json`, webhook `type`, `localStorage` key, Vercel project) until a deliberate migration. Design direction and tokens: DESIGN.md. macOS only for the CLI. Node 22+.
 - npm package name for the CLI: `gigagent` (verified free on npm 2026-10-14). Recipient runs `npx gigagent`.
 - Server deploys to **Vercel** (Hono zero-config, project Root Directory = `server`), Postgres via `DATABASE_URL` (Neon), embedded PGlite locally/e2e. The Cloudflare tunnel + Worker remain as a self-hosting option.
 - Models: Vercel **AI Gateway** for ids containing `/` (default `anthropic/claude-haiku-5.5`); bare ids (e.g. `deepseek-flash`) go to the direct DeepSeek upstream.

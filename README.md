@@ -1,4 +1,6 @@
-# GigAgent
+# Hired Gun
+
+> Formerly GigAgent. The product name changed; the command, npm package and env vars are still `gigagent` / `GIGAGENT_*`, so existing codes, notes and deployments keep working.
 
 Remote help for someone who isn't technical. You write a job on a dashboard and get a one-use code. The other person runs
 
@@ -12,6 +14,7 @@ The model API keys never reach the Mac. The CLI gets a per-session token and tal
 
 - [PLAN.md](PLAN.md): architecture and decisions
 - [CONTRACT.md](CONTRACT.md): the binding API contract
+- [DESIGN.md](DESIGN.md): visual direction, tokens, voice and what was deliberately not renamed
 - [CLAUDE.md](CLAUDE.md): working rules for the codebase
 
 ## Layout
@@ -21,7 +24,7 @@ The model API keys never reach the Mac. The CLI gets a per-session token and tal
 | `server/` | Hono app: admin API, agent API, `/v1` proxy, sweeper. Postgres (Neon) on Vercel, embedded PGlite locally |
 | `server/public/index.html` | marketing landing page (served at `/`) |
 | `server/public/dashboard.html` | operator dashboard (served at `/dashboard`) |
-| `server/public/assets/` | shared styles and logo |
+| `server/public/assets/` | shared brand tokens (`brand.css`), logo, self-hosted fonts (SIL OFL) |
 | `cli/` | the `gigagent` npm package (the recipient's command) |
 | `mock/` | scripted OpenAI-compatible upstream for offline tests |
 | `e2e/run.mjs` | end-to-end test |

@@ -53,6 +53,7 @@ function wrap(text: string, width: number): string[] {
 export class StatusUi {
   private tty = Boolean(process.stdout.isTTY);
   private color = this.tty && !process.env.NO_COLOR && process.env.TERM !== "dumb";
+  private color256 = this.color && /256color|truecolor|24bit/i.test(`${process.env.TERM ?? ""} ${process.env.COLORTERM ?? ""}`);
   private timer: NodeJS.Timeout | null = null;
   private frame = 0;
   private lineShown = false;
@@ -70,22 +71,24 @@ export class StatusUi {
   private bold = (t: string) => this.paint("1", t);
   private dim = (t: string) => this.paint("2", t);
   private cyan = (t: string) => this.paint("36", t);
+  /** Brand accent: 256-colour brass where supported, plain yellow otherwise. */
+  private brass = (t: string) => this.paint(this.color256 ? "38;5;214;1" : "33;1", t);
   private green = (t: string) => this.paint("32;1", t);
   private red = (t: string) => this.paint("31;1", t);
   private yellow = (t: string) => this.paint("33", t);
 
   /** Text for the one question we ever ask. */
   get codePrompt(): string {
-    return `  ${this.bold("Enter your code")} ${this.dim("(it looks like ABCD-EFGH)")}\n  ${this.cyan("›")} `;
+    return `  ${this.bold("Enter your code")} ${this.dim("(it looks like ABCD-EFGH)")}\n  ${this.brass("›")} `;
   }
 
   header(): void {
     if (!this.tty) {
-      console.log("GigAgent - a trusted helper that does one job on this Mac, then removes itself.");
+      console.log("Hired Gun - a helper sent by someone you trust. It does one job on this Mac, then leaves.");
       return;
     }
     console.log(
-      `\n  ${this.cyan("◆")} ${this.bold("GigAgent")}\n  ${this.dim("A trusted helper that does one job on this Mac, then removes itself.")}\n`,
+      `\n  ${this.brass("★")} ${this.bold("Hired Gun")}\n  ${this.dim("A helper sent by someone you trust. It does one job on this Mac, then leaves.")}\n`,
     );
   }
 
@@ -105,8 +108,8 @@ export class StatusUi {
 
   connected(task: string): void {
     const first = task.split("\n")[0] ?? "";
-    this.say(`${this.tty ? "  " : ""}${this.green("✓")} Connected. ${this.dim("Task:")} ${truncate(first, 70)}`);
-    if (this.tty) console.log(`  ${this.dim("Working now. You can leave this window open; press Ctrl+C to stop at any time.")}\n`);
+    this.say(`${this.tty ? "  " : ""}${this.green("✓")} Connected. ${this.dim("Job:")} ${truncate(first, 70)}`);
+    if (this.tty) console.log(`  ${this.dim("Working now. Leave this window open, and press Ctrl+C to stop it at any time.")}\n`);
   }
 
   start(): void {
@@ -124,7 +127,7 @@ export class StatusUi {
     const line = s.online ? s.statusText : "reconnecting…";
     if (line !== this.lastPlain) {
       this.lastPlain = line;
-      console.log(`[gigagent] ${line}`);
+      console.log(`[hired-gun] ${line}`);
     }
   }
 
@@ -176,7 +179,7 @@ export class StatusUi {
     const text = truncate(s.statusText || "Working…", room);
     const pad = " ".repeat(Math.max(2, room - text.length + 2));
     const tail = s.online ? this.dim(tailPlain) : this.yellow(tailPlain);
-    process.stdout.write(`\r\x1b[2K  ${this.cyan(head)} ${text}${pad}${tail}`);
+    process.stdout.write(`\r\x1b[2K  ${this.brass(head)} ${text}${pad}${tail}`);
     this.lineShown = true;
   }
 }

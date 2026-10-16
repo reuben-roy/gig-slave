@@ -70,7 +70,7 @@ export const config = {
   // requires reasoning_content to be echoed back on every tool-call turn.
   upstreamExtraBody: parseExtraBody("UPSTREAM_EXTRA_BODY", env.UPSTREAM_EXTRA_BODY),
   resendApiKey: env.RESEND_API_KEY ?? "",
-  notifyFrom: env.NOTIFY_FROM || "GigAgent <onboarding@resend.dev>",
+  notifyFrom: env.NOTIFY_FROM || "Hired Gun <onboarding@resend.dev>",
   sessionTokenBudget: Number(env.SESSION_TOKEN_BUDGET) > 0 ? Number(env.SESSION_TOKEN_BUDGET) : 2_000_000,
   // Max lifetime of one admin SSE stream. On Vercel the client reconnects after this; keep it below the function's maxDuration.
   streamMaxMs: Number(env.FLUID_MAX_STREAM_MS) > 0 ? Number(env.FLUID_MAX_STREAM_MS) : onVercel ? 55_000 : Infinity,
