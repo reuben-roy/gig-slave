@@ -26,6 +26,8 @@ The model API keys never reach the Mac. The CLI gets a per-session token and tal
 | `server/public/dashboard.html` | operator dashboard (served at `/dashboard`) |
 | `server/public/assets/` | shared brand tokens (`brand.css`), logo, self-hosted fonts (SIL OFL) |
 | `cli/` | the `gigagent` npm package (the recipient's command) |
+| `operator/` | the `hired-gun` CLI for agents (zero dependencies, no build) |
+| `plugin/`, `.claude-plugin/` | Claude Code plugin (MCP server + skill) and its marketplace entry |
 | `mock/` | scripted OpenAI-compatible upstream for offline tests |
 | `e2e/run.mjs` | end-to-end test |
 | `worker/`, `scripts/tunnel.mjs` | self-hosting option only: stable Cloudflare Worker address for a tunnel |
@@ -126,6 +128,21 @@ If you'd rather run the server on your own Mac, you need `cloudflared` (`brew in
 2. Set that address as `PUBLIC_URL` in `.env` and as `BAKED_SERVER_URL` in `cli/src/server-url.ts`. Rebuild and publish the CLI as above.
 3. Start the server (`npm start`), then in a second terminal run `npm run tunnel`. It starts a quick tunnel and points the Worker at it. Keep it running while jobs are live.
 
+## Agent access (operator CLI, MCP, OAuth)
+
+Agents can run jobs without the dashboard. There are three separate credentials: `ADMIN_TOKEN` (you), recipient session tokens, and **operator tokens** (`hgo_…`), one per agent account with its own limits. An agent never sees `ADMIN_TOKEN`.
+
+```bash
+node operator/bin.mjs login --name "my agent"   # prints a link and code; you approve it at <server>/connect
+node operator/bin.mjs whoami
+node operator/bin.mjs jobs create --key trip-1 --label "Dad's iMac" --task "Organize my Desktop" --dir ~/Desktop
+node operator/bin.mjs jobs watch <job id>        # JSON lines until the job ends; the last line has the result
+```
+
+`jobs list|get|events|instruct|stop|code` cover the rest; `HIRED_GUN_TOKEN` / `HIRED_GUN_SERVER` override the saved sign-in. Review, limit and revoke accounts at `/connect`.
+
+Claude: `claude plugin marketplace add <this repo>` then `claude plugin install hired-gun@hired-gun`, then `/mcp` to authenticate (you approve on `/connect`). Headless: `claude mcp add --transport http hired-gun <server>/mcp --header "Authorization: Bearer $HIRED_GUN_TOKEN"`. ChatGPT and other OAuth connectors use `<server>/mcp` with the discovery documents under `/.well-known/`. API details: CONTRACT.md.
+
 ## Real-key demo on a Mac
 
 1. Server up (Vercel or local with tunnel), `PUBLIC_URL` and `BAKED_SERVER_URL` set, CLI published.
@@ -184,4 +201,4 @@ The person running the CLI needs a Mac with Node.js 22+ (free installer at nodej
 npm run e2e
 ```
 
-Builds everything, starts the mock upstream and the server, creates an invite, runs the real CLI against a fake Desktop in `e2e/.tmp/`, and checks the report, expiry rules, kill path, and temp-dir cleanup. Spends no tokens.
+Builds everything, starts the mock upstream and the server, creates an invite, runs the real CLI against a fake Desktop in `e2e/.tmp/`, and checks the report, expiry rules, kill path, and temp-dir cleanup, then drives the operator journey (`hired-gun` login, approval, idempotent create, watch, instruct, stop, MCP, logout). Spends no tokens. `npm test` runs the server tests, including operator accounts, MCP and OAuth.

@@ -99,4 +99,4 @@ $ npx gigagent ABCD-EFGH
 
 **Handled now:** wrong-code rate limits, lost connection and reconnect, crash detection by the sweeper, Ctrl+C, kill and revoke, all expiry policies, keys kept on the server, no deletion with an undo log, isolated Pi config, Desktop path handling.
 
-**Deferred:** machine-binding of tokens, signed CLI releases, per-session tool allowlists and command policy, operator approval for risky commands, multi-operator accounts, audit export, spend caps per invite, Windows support, an offboarding mode.
+**Deferred:** machine-binding of tokens, signed CLI releases, per-session tool allowlists and command policy, operator approval for risky commands, end-user sign-up and password accounts for operators (accounts are owner-approved today), audit export, spend caps per invite, Windows support, an offboarding mode.

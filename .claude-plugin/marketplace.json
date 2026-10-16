@@ -1,0 +1,11 @@
+{
+  "name": "hired-gun",
+  "owner": { "name": "reuben-roy" },
+  "plugins": [
+    {
+      "name": "hired-gun",
+      "source": "./plugin",
+      "description": "Create, watch, instruct and stop Hired Gun jobs and read their structured results from Claude."
+    }
+  ]
+}

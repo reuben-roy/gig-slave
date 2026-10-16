@@ -1,0 +1,16 @@
+{
+  "name": "hired-gun",
+  "displayName": "Hired Gun",
+  "version": "0.1.0",
+  "description": "Create, watch, instruct and stop Hired Gun jobs (a helper agent working on someone's Mac) and read their structured results.",
+  "author": { "name": "reuben-roy" },
+  "license": "MIT",
+  "userConfig": {
+    "server_url": {
+      "type": "string",
+      "title": "Hired Gun server",
+      "description": "Base URL of your Hired Gun service, without a trailing slash",
+      "default": "https://gigagent-beta.vercel.app"
+    }
+  }
+}

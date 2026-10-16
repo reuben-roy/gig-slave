@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "hired-gun": {
+      "type": "http",
+      "url": "${user_config.server_url}/mcp"
+    }
+  }
+}

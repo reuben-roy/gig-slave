@@ -12,12 +12,17 @@ All JSON. All times are unix **ms**. Errors: `{ "error": "<message>" }` with a 4
 | `/api/*` | Admin API (admin token) |
 | `/agent/*` | Agent API (used by the CLI) |
 | `/v1/*` | OpenAI-compatible inference proxy (session token) |
+| `/operator/*` | Operator API for agents (operator token) |
+| `/mcp` | MCP server exposing the operator actions as tools (operator token) |
+| `/oauth/*`, `/.well-known/oauth-*` | OAuth 2.1 authorization server for connectors |
+| `/connect` | Owner approval page for agent access and connector links |
 
 Static files are served by Vercel's CDN in production and by the Hono app locally; both must resolve the same paths (`/` → `index.html`, `/dashboard` → `dashboard.html`, `/assets/x` → `assets/x`).
 
 ## Auth
 - Admin endpoints (`/api/*`): `Authorization: Bearer <ADMIN_TOKEN>`. The SSE endpoint also accepts `?token=<ADMIN_TOKEN>` (EventSource can't set headers).
 - Agent endpoints (`/agent/*` except redeem) and `/v1/*`: `Authorization: Bearer <session_token>`.
+- Operator endpoints (`/operator/*` except enrollment) and `/mcp`: `Authorization: Bearer <operator token>` (`hgo_…`). Three credentials, never interchangeable: `ADMIN_TOKEN` (the owner, dashboard, approvals), recipient session tokens, and operator tokens (an agent's own account).
 
 ## Codes
 - Invite code format: 8 chars, uppercase, from alphabet `ABCDEFGHJKMNPQRSTUVWXYZ23456789`, displayed as `XXXX-XXXX`. Server normalizes input: strip non-alphanumerics, uppercase.
@@ -152,3 +157,39 @@ Sweeper: invites with expires_at < now → expired; sessions alive with last_hea
 - The agent has one extra tool besides read/write/edit/bash: **`submit_report`** with parameters
   `{ success: boolean, summary: string, answer?: string, findings?: {label,value}[], changes?: string[] }`.
   The agent must call it exactly once, as its last action. The CLI turns it into `Result` and sends it with `/agent/complete`. If the agent ends without calling it, the CLI falls back to `{ success: true, summary: <last assistant text>, answer: null, findings: [], changes: [] }`.
+
+## Operator API (agents and connectors)
+
+An **operator account** is the identity an agent or connector acts as. It owns the jobs it creates (`invites.operator_id`), sees only those, and is bounded by limits. Accounts exist only because the owner (holder of `ADMIN_TOKEN`) approved an enrollment on `/connect` or an OAuth consent. A **job** is an invite plus its sessions.
+
+Errors here are `{ "error": "<message>", "code": "<code>" }`. Codes: `invalid_request` 400, `invalid_token` 401 (with `WWW-Authenticate: Bearer … resource_metadata=…`), `insufficient_scope` 403, `model_not_allowed` 403, `limit_exceeded` 403/429, `not_found` 404 (also for another account's job), `not_running` / `not_reissuable` / `not_pending` 409, `idempotency_conflict` 422, `rate_limited` 429, enrollment: `invalid_device_secret` 401, `denied` 403, `expired` / `already_collected` 410.
+
+### Enrollment (how an agent obtains access)
+`POST /operator/enroll` `{ "name": "claude", "scopes": ["jobs:read","jobs:write"] }` → 201 `{ user_code: "ABCD-EFGH", device_secret: "hgd_…", verification_url, expires_in: 900, interval: 3 }`. Unauthenticated, rate-limited per client IP. The human opens `verification_url`, signs in with the admin token and approves (or denies).
+`POST /operator/enroll/token` `{ "device_secret" }` → 202 `{ status: "pending", interval }` until approved, then 200 `{ status: "approved", token: "hgo_…", scopes, operator }` **once** (410 afterwards). Scopes: `jobs:read`, `jobs:write`. Tokens expire (default 90 days) and can be revoked.
+Admin side (`ADMIN_TOKEN`): `GET /api/enrollments`, `POST /api/enrollments/:code/approve` `{ name?, scopes?, max_active_jobs?, max_jobs_per_day?, max_ttl_hours?, allowed_models?, token_ttl_days? }`, `POST /api/enrollments/:code/deny`, `GET /api/operators`, `POST /api/operators/:id/revoke` `{ stop_jobs?: true }`, `POST /api/operators/:id/limits`, `POST /api/operators/:id/tokens/:tokenId/revoke`.
+
+### Actions (one definition, three faces: REST, MCP tool, `hired-gun` CLI)
+| Action | REST | Scope |
+|---|---|---|
+| `get_account` | `GET /operator/me` | read |
+| `create_job` | `POST /operator/jobs` (`Idempotency-Key` header or `idempotency_key` field) | write |
+| `list_jobs` | `GET /operator/jobs?state=&limit=` | read |
+| `get_job` | `GET /operator/jobs/:id?wait_seconds=0..20` | read |
+| `get_job_events` | `GET /operator/jobs/:id/events?after=&limit=` → `{ events, next_after }` | read |
+| `send_instruction` | `POST /operator/jobs/:id/instructions` `{ text }` | write |
+| `stop_job` | `POST /operator/jobs/:id/stop` | write |
+| `reissue_code` | `POST /operator/jobs/:id/code` | write |
+| (logout) | `DELETE /operator/token` | any |
+
+`create_job` takes the `POST /api/invites` fields; `expiry_policy` defaults to `one_use`; operator jobs always expire (`ttl_hours`, default 24, capped by the account's `max_ttl_hours`). Same `idempotency_key` + same parameters returns the original job with `replayed: true` and `code: null` (codes are shown once; use `reissue_code`); same key with different parameters is 422. Limits (`max_active_jobs`, `max_jobs_per_day`, `max_ttl_hours`, `allowed_models`) are enforced atomically in the insert.
+```ts
+Job = Invite & { state: "waiting_for_recipient"|"running"|"succeeded"|"failed"|"stopped"|"expired",
+                 active_session_id: string|null, result: Result|null, sessions: Session[], operator_id: string|null }
+```
+
+### MCP (`POST /mcp`)
+Streamable HTTP, stateless, JSON responses (`initialize`, `ping`, `tools/list`, `tools/call`; `GET` is 405). Tools are the actions above, listed only if the token's scopes allow them. Results carry `structuredContent` (and the same JSON as text); action errors return `isError: true` with `{ error, code }`.
+
+### OAuth (connectors: ChatGPT, Claude)
+Discovery: `/.well-known/oauth-protected-resource` (resource `<PUBLIC_URL>/mcp`) and `/.well-known/oauth-authorization-server`. `POST /oauth/register` (RFC 7591, public clients, https or loopback redirect URIs). `GET /oauth/authorize` requires PKCE S256 and sends the owner to `/connect`, where they sign in with the admin token and **explicitly** choose the operator account (existing or new, with limits) and scopes; deny returns `access_denied`. `POST /oauth/token`: `authorization_code` (single use, 10 min, replay revokes what it issued) and `refresh_token` (rotating; reuse of an old one revokes the grant). Access tokens are ordinary operator tokens (`kind: "oauth"`, 1 h); refresh tokens `hgr_…` last 30 days. `POST /oauth/revoke` (RFC 7009). Owner endpoints: `GET /api/oauth/clients/:id`, `POST /api/oauth/authorize`.
