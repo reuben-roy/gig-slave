@@ -469,6 +469,15 @@ async function runSteps() {
     assert(body.trim().length > 0, s, "brand.css is empty");
   });
 
+  await step("GET /assets/stream-policy.js serves JavaScript (the dashboard needs it to open its stream)", async (s) => {
+    const r = await fetch(`${state.serverUrl}/assets/stream-policy.js`, { signal: AbortSignal.timeout(5000) });
+    const contentType = r.headers.get("content-type") ?? "";
+    const body = await r.text();
+    assert(r.status === 200, s, `GET /assets/stream-policy.js returned ${r.status}`);
+    assert(contentType.includes("javascript"), s, `stream-policy.js content-type is "${contentType}"`);
+    assert(body.includes("createStreamPolicy"), s, "stream-policy.js has unexpected content");
+  });
+
   await step("admin API rejects requests without token", async (s) => {
     const r = await api("GET", "/api/invites");
     assert(r.status === 401, s, `GET /api/invites without token returned ${r.status}, expected 401`);

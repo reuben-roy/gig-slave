@@ -8,6 +8,7 @@ import {
   toEvent, toInvite, toSession,
 } from "./db.js";
 import { isAlive, isTerminal, killSession } from "./lifecycle.js";
+import { runFeed } from "./stream.js";
 import { maybeSweep, sweep } from "./sweeper.js";
 
 export const admin = new Hono();
@@ -185,10 +186,7 @@ admin.post("/sessions/:id/kill", async (c) => {
   return c.json({ ok: true });
 });
 
-// ---------- SSE (polls the database; works the same on Vercel and locally) ----------
-
-const POLL_MS = 700;
-const PING_MS = 15_000;
+// ---------- SSE (adaptive database polling, see stream.ts; works the same on Vercel and locally) ----------
 
 admin.get("/stream", (c) => {
   c.header("Cache-Control", "no-cache, no-transform");
@@ -202,67 +200,15 @@ admin.get("/stream", (c) => {
       open = false;
     });
 
-    const deadline = Date.now() + config.streamMaxMs;
-    const msg = (id: number | string, name: string, payload: unknown) =>
-      stream.write(`id: ${id}\nevent: ${name}\ndata: ${JSON.stringify(payload)}\n\n`);
-
     try {
       await stream.write("retry: 1000\n\n");
-
-      // Start from "now": clients re-fetch current state on every (re)connect.
-      let eventCursor = Number((await one("SELECT COALESCE(MAX(id), 0) AS m FROM events"))?.m ?? 0);
-      let rowCursor = Date.now();
-      const OVERLAP_MS = 2000;
-      const seenSessions = new Map<string, number>();
-      const seenInvites = new Map<string, number>();
-      let lastWrite = Date.now();
-      let failures = 0;
-
-      while (open && Date.now() < deadline) {
-        try {
-          await maybeSweep();
-
-          const events = await all("SELECT * FROM events WHERE id > $1 ORDER BY id LIMIT 500", [eventCursor]);
-          for (const r of events) {
-            const e = toEvent(r);
-            eventCursor = e.id;
-            await msg(e.id, "event", eventJson(e));
-          }
-
-          const since = rowCursor - OVERLAP_MS;
-          let maxTs = rowCursor;
-          const sessions = (await all("SELECT * FROM sessions WHERE updated_at > $1 ORDER BY updated_at LIMIT 200", [since])).map(toSession);
-          for (const s of sessions) {
-            maxTs = Math.max(maxTs, s.updated_at);
-            if (seenSessions.get(s.id) === s.updated_at) continue;
-            seenSessions.set(s.id, s.updated_at);
-            await msg(s.updated_at, "session", sessionJson(s));
-          }
-          const invites = (await all("SELECT * FROM invites WHERE updated_at > $1 ORDER BY updated_at LIMIT 200", [since])).map(toInvite);
-          for (const i of invites) {
-            maxTs = Math.max(maxTs, i.updated_at);
-            if (seenInvites.get(i.id) === i.updated_at) continue;
-            seenInvites.set(i.id, i.updated_at);
-            await msg(i.updated_at, "invite", inviteJson(i));
-          }
-          rowCursor = maxTs;
-          for (const m of [seenSessions, seenInvites]) {
-            for (const [k, ts] of m) if (ts < rowCursor - 3 * OVERLAP_MS) m.delete(k);
-          }
-          if (events.length || sessions.length || invites.length) lastWrite = Date.now();
-          failures = 0;
-        } catch (e) {
-          if (!open) break;
-          console.error("stream poll error:", (e as Error).message);
-          if (++failures >= 5) break;
-        }
-
-        if (Date.now() - lastWrite >= PING_MS) {
-          await stream.write(": ping\n\n");
-          lastWrite = Date.now();
-        }
-        await stream.sleep(POLL_MS);
-      }
+      await runFeed({
+        write: (event, id, payload) => stream.write(`id: ${id}\nevent: ${event}\ndata: ${JSON.stringify(payload)}\n\n`),
+        ping: () => stream.write(": ping\n\n"),
+        sleep: (ms) => stream.sleep(ms),
+        isOpen: () => open,
+        deadline: Date.now() + config.streamMaxMs,
+      });
     } catch {
       // client went away
     }

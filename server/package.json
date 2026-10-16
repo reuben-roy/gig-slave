@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc -p .",
     "start": "node --env-file-if-exists=../.env dist/main.js",
-    "dev": "tsc -p . && node --env-file-if-exists=../.env dist/main.js"
+    "dev": "tsc -p . && node --env-file-if-exists=../.env dist/main.js",
+    "test": "tsc -p . && node --test test/*.test.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.10",
