@@ -182,7 +182,7 @@ Admin side (`ADMIN_TOKEN`): `GET /api/enrollments`, `POST /api/enrollments/:code
 | `reissue_code` | `POST /operator/jobs/:id/code` | write |
 | (logout) | `DELETE /operator/token` | any |
 
-`create_job` takes the `POST /api/invites` fields; `expiry_policy` defaults to `one_use`; operator jobs always expire (`ttl_hours`, default 24, capped by the account's `max_ttl_hours`). Same `idempotency_key` + same parameters returns the original job with `replayed: true` and `code: null` (codes are shown once; use `reissue_code`); same key with different parameters is 422. Limits (`max_active_jobs`, `max_jobs_per_day`, `max_ttl_hours`, `allowed_models`) are enforced atomically in the insert.
+`create_job` takes the `POST /api/invites` fields; `expiry_policy` defaults to `one_use`; operator jobs always expire (`ttl_hours`, default 24, capped by the account's `max_ttl_hours`). Same `idempotency_key` + same parameters returns the original job with `replayed: true` and `code: null` (codes are shown once; use `reissue_code`); same key with different parameters is 422. Limits (`max_active_jobs`, `max_jobs_per_day`, `max_ttl_hours`, `allowed_models`) are enforced atomically in the insert; a finished `ttl`/`on_complete` job still counts as active until it expires or is stopped. Operator jobs cannot set `notify_email`, only `https://` webhooks; `label` ≤ 120 and `task` ≤ 8000 characters, instructions ≤ 4000.
 ```ts
 Job = Invite & { state: "waiting_for_recipient"|"running"|"succeeded"|"failed"|"stopped"|"expired",
                  active_session_id: string|null, result: Result|null, sessions: Session[], operator_id: string|null }
