@@ -104,8 +104,12 @@ export function ensureSchema(): Promise<void> {
   return schemaPromise;
 }
 
+/** Statement counter (excludes the one-time schema bootstrap). Used by tests and the usage measurement script. */
+export const dbStats = { queries: 0 };
+
 export async function query(sql: string, params: unknown[] = []) {
   await ensureSchema();
+  dbStats.queries++;
   return (await driver()).query(sql, params);
 }
 export async function all<T = any>(sql: string, params: unknown[] = []): Promise<T[]> {

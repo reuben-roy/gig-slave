@@ -10,6 +10,8 @@
     "dev:server": "npm run dev -w server",
     "build": "npm run build -w server && npm run build -w cli",
     "e2e": "node e2e/run.mjs",
+    "test": "npm test -w server",
+    "measure": "npm run build -w server && node scripts/measure-usage.mjs",
     "start": "npm run start -w server",
     "tunnel": "node scripts/tunnel.mjs"
   },
