@@ -4,9 +4,15 @@ import { endSession, killSession } from "./lifecycle.js";
 import { notifySession } from "./notify.js";
 
 export const FAIL_WINDOW_MS = 10 * 60_000;
+/** Pruning old rate-limit rows is housekeeping; once per 10 minutes per instance is plenty. */
+const PRUNE_EVERY_MS = 10 * 60_000;
+let lastPrune = 0;
 
-/** Expire overdue invites, fail sessions that stopped heartbeating, prune old rate-limit rows. */
-export async function sweep(now = Date.now()) {
+/**
+ * Expire overdue invites, fail sessions that stopped heartbeating, prune old rate-limit rows.
+ * `prune: false` skips the rate-limit cleanup (the lazy sweeper passes it except once per PRUNE_EVERY_MS).
+ */
+export async function sweep(now = Date.now(), opts: { prune?: boolean } = {}) {
   const expired = await all<{ id: string }>(
     `UPDATE invites SET status = 'expired', updated_at = $1
      WHERE expires_at IS NOT NULL AND expires_at < $1 AND status IN ('pending', 'active') RETURNING id`,
@@ -33,19 +39,25 @@ export async function sweep(now = Date.now()) {
     }
   }
 
-  await run("DELETE FROM redeem_failures WHERE ts < $1", [now - FAIL_WINDOW_MS]);
+  if (opts.prune !== false) await run("DELETE FROM redeem_failures WHERE ts < $1", [now - FAIL_WINDOW_MS]);
 }
 
 let last = 0;
 let running: Promise<void> | null = null;
 
-/** Throttled lazy sweep (at most once per 5s per instance). Never throws. */
-export function maybeSweep(): Promise<void> {
-  const now = Date.now();
+/**
+ * Throttled lazy sweep (default: at most once per 5s per instance). Never throws.
+ * `everyMs` lets low-urgency callers (an idle dashboard stream) ask for a slower cadence; a sweep that
+ * already ran recently for any other caller satisfies them. `clock` is injectable for tests.
+ */
+export function maybeSweep(everyMs = 5000, clock: () => number = Date.now): Promise<void> {
+  const now = clock();
   if (running) return running;
-  if (now - last < 5000) return Promise.resolve();
+  if (now - last < everyMs) return Promise.resolve();
   last = now;
-  running = sweep(now)
+  const prune = now - lastPrune >= PRUNE_EVERY_MS;
+  if (prune) lastPrune = now;
+  running = sweep(Date.now(), { prune })
     .catch((e) => console.error("sweep error:", (e as Error).message))
     .finally(() => {
       running = null;

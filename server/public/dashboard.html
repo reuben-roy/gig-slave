@@ -45,6 +45,9 @@
   .conn i { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
   .conn[data-state="live"] i { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
   .conn[data-state="retry"] i { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
+  .conn[data-state="paused"] { cursor: pointer; }
+  .conn[data-state="paused"]:hover { border-color: var(--text-3); }
+  .conn[data-state="paused"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .top .links { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-left: auto; padding: 6px 0; }
 
   /* ---------- buttons ---------- */
@@ -537,6 +540,7 @@
   </form>
 </dialog>
 
+<script src="/assets/stream-policy.js"></script>
 <script>
 (() => {
   'use strict';
@@ -794,9 +798,16 @@
   function setConn(state, text) {
     const c = $('conn');
     c.hidden = false; c.dataset.state = state; $('connText').textContent = text;
+    // A paused badge doubles as the resume button.
+    if (state === 'paused') { c.setAttribute('role', 'button'); c.tabIndex = 0; c.title = 'Resume live updates'; }
+    else { c.setAttribute('role', 'status'); c.removeAttribute('tabindex'); c.removeAttribute('title'); }
   }
-  function closeStream() { if (st.es) { st.es.close(); st.es = null; } }
+  function closeStream() {
+    clearTimeout(st.readyTimer); st.readyTimer = 0;
+    if (st.es) { st.es.close(); st.es = null; }
+  }
   function showAuth(msg) {
+    policy.stop();
     closeStream();
     $('app').hidden = true; $('auth').hidden = false;
     $('signOut').hidden = true; $('conn').hidden = true; $('notifBtn').hidden = true;
@@ -836,6 +847,7 @@
 
   // ============ boot & live updates ============
   async function start() {
+    policy.stop();
     closeStream();
     $('auth').hidden = true; $('app').hidden = false; $('signOut').hidden = false;
     setConn('off', 'Connecting…');
@@ -843,7 +855,7 @@
     lsSet(KEY, st.token);
     try { await loadInvites(); } catch (e) { if (e.auth) return; showErr($('listErr'), e.message); }
     updateNotifBtn();
-    connect();
+    policy.start();
   }
   async function loadConfig() {
     const cfg = await api('GET', '/api/config');
@@ -872,18 +884,44 @@
     for (const inv of list) for (const s of inv.sessions || []) trackSession(s, inv);
     st.invites = list;
     st.loaded = true;
+    policy.liveChanged();
     schedule();
     if (st.pendingSel && findSession(st.pendingSel)) { const id = st.pendingSel; st.pendingSel = null; selectSession(id, { scroll: true }); }
+  }
+  // The stream polls the database on the server, so it is only open while it is useful (see assets/stream-policy.js).
+  const isLive = s => !TERMINAL.includes(s.status);
+  const policy = GigStreamPolicy.createStreamPolicy({
+    now: () => Date.now(),
+    setTimer: (fn, ms) => setTimeout(fn, ms),
+    clearTimer: id => clearTimeout(id),
+    isHidden: () => document.hidden,
+    hasLive: () => st.invites.some(i => (i.sessions || []).some(isLive)),
+    connect: () => connect(),
+    disconnect: () => closeStream(),
+    onState: (state, reason) => {
+      if (state === 'paused') setConn('paused', reason === 'hidden' ? 'Paused (tab in background)' : 'Paused. Click to resume');
+      else setConn('off', 'Connecting…'); // the stream's own `open` event flips this to Live
+    },
+  });
+  // Refetch current state, then trust the stream from the server's cursor onward. Called on `ready`
+  // (the server has fixed its cursors) and, for servers that predate `ready`, shortly after `open`.
+  function resync() {
+    clearTimeout(st.readyTimer); st.readyTimer = 0;
+    st.resyncedAt = Date.now();
+    loadInvites().catch(e => { if (!e.auth) showErr($('listErr'), e.message); });
+    refreshEvents();
   }
   function connect() {
     closeStream();
     const es = new EventSource('/api/stream?token=' + enc(st.token));
     st.es = es;
+    st.openedAt = Date.now();
     es.addEventListener('open', () => {
       setConn('live', 'Live'); st.wasLive = true;
-      loadInvites().catch(e => { if (!e.auth) showErr($('listErr'), e.message); });
-      refreshEvents();
+      clearTimeout(st.readyTimer);
+      st.readyTimer = setTimeout(resync, 3000);
     });
+    es.addEventListener('ready', () => resync());
     es.addEventListener('event', e => { try { onEvent(JSON.parse(e.data)); } catch (x) {} });
     es.addEventListener('session', e => { try { onSession(JSON.parse(e.data)); } catch (x) {} });
     es.addEventListener('invite', e => { try { onInvite(JSON.parse(e.data)); } catch (x) {} });
@@ -891,16 +929,27 @@
       setConn('retry', 'Reconnecting…');
       if (es.readyState !== EventSource.CLOSED) return; // the browser retries by itself
       closeStream();
-      setTimeout(async () => { // closed for good (e.g. 401): probe, then reopen
-        if (!st.token || $('app').hidden || st.es) return;
+      setTimeout(async () => { // closed for good (e.g. 401): probe, then reopen if a stream is still wanted
+        if (!st.token || $('app').hidden || st.es || !policy.wantsStream()) return;
         try { await api('GET', '/api/config'); } catch (e) { if (e.auth) return; }
-        if (!st.es) connect();
+        if (!st.es && policy.wantsStream()) connect();
       }, 3000);
     });
   }
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && st.token && !$('app').hidden) { loadInvites().catch(() => {}); refreshEvents(); }
+    policy.visibilityChanged();
+    // Back from a long absence with the stream still attached (e.g. after laptop sleep): resync once.
+    // (A reconnect resyncs by itself, so skip if that just happened.)
+    if (!document.hidden && st.token && !$('app').hidden && st.es && Date.now() - Math.max(st.resyncedAt || 0, st.openedAt || 0) > 5000) resync();
   });
+  // Operator activity keeps the stream open; mousemove is throttled because it fires constantly.
+  let lastMove = 0;
+  for (const ev of ['pointerdown', 'keydown', 'wheel', 'touchstart', 'focus']) {
+    window.addEventListener(ev, () => policy.activity(), { passive: true, capture: true });
+  }
+  window.addEventListener('mousemove', () => { const n = Date.now(); if (n - lastMove > 5000) { lastMove = n; policy.activity(); } }, { passive: true });
+  $('conn').addEventListener('click', () => { if ($('conn').dataset.state === 'paused') policy.resume(); });
+  $('conn').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && $('conn').dataset.state === 'paused') { e.preventDefault(); policy.resume(); } });
   function upsertSession(s) {
     const inv = findInvite(s.invite_id);
     if (!inv) return null;
@@ -913,11 +962,13 @@
     const inv = upsertSession(s);
     if (!inv) { loadInvites().catch(() => {}); return; }
     trackSession(s, inv);
+    policy.liveChanged();
     schedule();
   }
   function onInvite(inv) {
     const cur = findInvite(inv.id);
     if (cur) Object.assign(cur, inv); else st.invites.unshift({ ...inv, sessions: [] });
+    policy.liveChanged();
     schedule();
   }
   function onEvent(ev) { if (ev.session_id === st.sel) addEvents([ev]); }
