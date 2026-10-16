@@ -1,0 +1,16 @@
+{
+  "name": "hired-gun",
+  "version": "0.1.0",
+  "description": "Hired Gun operator CLI: let an agent create jobs, watch them, send instructions, stop them and read structured results.",
+  "type": "module",
+  "bin": {
+    "hired-gun": "bin.mjs"
+  },
+  "files": [
+    "bin.mjs"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT"
+}

@@ -35,7 +35,7 @@ const TYPES: Record<string, string> = {
   ".map": "application/json; charset=utf-8",
 };
 
-/** Same URL space as Vercel's CDN with cleanUrls: / -> index.html, /dashboard -> dashboard.html, /assets/x -> assets/x. */
+/** Same URL space as Vercel's CDN with cleanUrls: / -> index.html, /dashboard -> dashboard.html, /connect -> connect.html, /assets/x -> assets/x. */
 async function staticResponse(req: Request): Promise<Response | null> {
   if (req.method !== "GET" && req.method !== "HEAD") return null;
   let pathname: string;
@@ -47,7 +47,7 @@ async function staticResponse(req: Request): Promise<Response | null> {
   if (pathname.includes("\0")) return null;
   let rel: string;
   if (pathname === "/") rel = "index.html";
-  else if (pathname === "/dashboard") rel = "dashboard.html";
+  else if (pathname === "/dashboard" || pathname === "/connect") rel = `${pathname.slice(1)}.html`;
   else if (pathname.startsWith("/assets/") || /^\/[^/]+\.(html|ico|png|svg|txt)$/.test(pathname)) rel = pathname.slice(1);
   else return null;
 

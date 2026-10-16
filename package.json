@@ -4,7 +4,8 @@
   "workspaces": [
     "server",
     "cli",
-    "mock"
+    "mock",
+    "operator"
   ],
   "scripts": {
     "dev:server": "npm run dev -w server",

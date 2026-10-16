@@ -2,7 +2,7 @@
 // End-to-end test: real server + real CLI, against the scripted mock upstream.
 // Run with `npm run e2e` from the repo root. Exit 0 on pass, 1 on the first failure.
 
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { existsSync, promises as fsp } from "node:fs";
 import { createServer as createHttpServer } from "node:http";
 import net from "node:net";
@@ -16,6 +16,8 @@ const TMP = path.join(HERE, ".tmp");
 const DESKTOP = path.join(TMP, "Desktop");
 const CLI_TMP = path.join(TMP, "tmp");
 const PGLITE_DIR = path.join(TMP, "pglite");
+const OPERATOR_BIN = path.join(ROOT, "operator", "bin.mjs");
+const OPERATOR_HOME = path.join(TMP, "operator-home");
 const SERVER_ENTRY = path.join(ROOT, "server", "dist", "main.js");
 const CLI_ENTRY = path.join(ROOT, "cli", "dist", "index.js");
 
@@ -324,6 +326,30 @@ function runCli(code) {
     tail: new Tail(),
   });
 }
+
+/** Runs the operator CLI (`hired-gun`) with an isolated credentials folder. Resolves with exit code and output. */
+function runOperator(args, extraEnv = {}) {
+  return new Promise((resolve) => {
+    execFile(
+      process.execPath,
+      [OPERATOR_BIN, ...args],
+      {
+        cwd: ROOT,
+        env: { ...baseEnv(), HIRED_GUN_HOME: OPERATOR_HOME, HIRED_GUN_SERVER: state.serverUrl, ...extraEnv },
+        timeout: 60000,
+      },
+      (err, stdout, stderr) => resolve({ code: err ? (err.code ?? 1) : 0, stdout, stderr }),
+    );
+  });
+}
+
+const parseJson = (text) => {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+};
 
 function killAllNow() {
   for (const child of state.live) {
@@ -798,6 +824,109 @@ async function runSteps() {
 
     const left = await listTempLeftovers();
     assert(left.length === 0, s, `leftover entries in ${CLI_TMP} after kill: ${left.join(", ")}`);
+  });
+
+  // ---------- operator journey: an agent uses only the `hired-gun` CLI and the MCP endpoint, never the dashboard ----------
+  const op = { code: null, jobId: null };
+
+  await step("operator CLI: login waits for a human, token is saved with owner-only permissions", async (s) => {
+    const first = await runOperator(["login", "--no-wait", "--name", "e2e agent"]);
+    assert(first.code === 0, s, `login --no-wait exited ${first.code}: ${first.stderr}`);
+    const pending = parseJson(first.stdout);
+    assert(pending?.status === "pending" && CODE_RE.test(pending.user_code), s, `unexpected login output: ${first.stdout}`);
+    assert(!existsSync(path.join(OPERATOR_HOME, "credentials.json")), s, "credentials were saved before approval");
+    const early = await runOperator(["whoami"]);
+    assert(early.code === 3, s, `whoami before approval exited ${early.code}, expected 3`);
+
+    const approve = await api("POST", `/api/enrollments/${pending.user_code}/approve`, { max_active_jobs: 3 }, ADMIN_TOKEN);
+    assert(approve.status === 200, s, `approve returned ${approve.status}: ${approve.text}`);
+
+    const done = await runOperator(["login"]);
+    assert(done.code === 0, s, `login after approval exited ${done.code}: ${done.stderr}`);
+    assert(parseJson(done.stdout)?.status === "approved", s, `unexpected login output: ${done.stdout}`);
+    assert(!done.stdout.includes("hgo_"), s, "login printed the token");
+    const mode = (await fsp.stat(path.join(OPERATOR_HOME, "credentials.json"))).mode & 0o777;
+    assert(mode === 0o600, s, `credentials.json mode is ${mode.toString(8)}, expected 600`);
+
+    const who = parseJson((await runOperator(["whoami"])).stdout);
+    assert(who?.operator?.name === "e2e agent" && who.usage.active_jobs === 0, s, `whoami: ${JSON.stringify(who)}`);
+  });
+
+  await step("operator CLI: idempotent job creation returns the same job", async (s) => {
+    const args = ["jobs", "create", "--key", "e2e-op-1", "--label", "Operator job", "--task", "Organize my Desktop into folders by type.", "--dir", DESKTOP, "--model", MODEL];
+    const a = parseJson((await runOperator(args)).stdout);
+    assert(a?.replayed === false && CODE_RE.test(a.code) && a.job?.state === "waiting_for_recipient", s, `create: ${JSON.stringify(a)}`);
+    const b = parseJson((await runOperator(args)).stdout);
+    assert(b?.replayed === true && b.code === null && b.job.id === a.job.id, s, `replay: ${JSON.stringify(b)}`);
+    const listed = parseJson((await runOperator(["jobs", "list"])).stdout);
+    assert(listed.jobs.length === 1, s, `expected exactly one job, got ${listed.jobs.length}`);
+    op.code = a.code;
+    op.jobId = a.job.id;
+  });
+
+  await step("operator CLI: watch follows the recipient's run to a structured result", async (s) => {
+    const watching = runOperator(["jobs", "watch", op.jobId]);
+    await sleep(1500); // let the watcher see the job waiting before the recipient shows up
+    const cli = runCli(op.code);
+    state.lastCli = cli;
+    const watched = await watching;
+    assert(watched.code === 0, s, `watch exited ${watched.code} (expected 0 = succeeded): ${watched.stderr}`);
+    const lines = watched.stdout.trim().split("\n").map(parseJson);
+    const final = lines.at(-1);
+    assert(final?.final && final.job.state === "succeeded", s, `last line: ${JSON.stringify(final)?.slice(0, 300)}`);
+    assert(lines[0]?.state === "waiting_for_recipient", s, `watch should start by reporting waiting_for_recipient, got ${JSON.stringify(lines[0])}`);
+    const result = final.job.result;
+    assert(result?.success === true && typeof result.summary === "string" && result.summary.length > 0, s, `result: ${JSON.stringify(result)}`);
+    assert(Array.isArray(result.changes) && Array.isArray(result.findings), s, "result has no findings/changes arrays");
+    assert(await waitExit(cli, 20000), s, "recipient CLI did not exit after the job finished");
+  });
+
+  await step("operator CLI: instruct and stop a running job; the recipient CLI stops", async (s) => {
+    const created = parseJson((await runOperator(["jobs", "create", "--key", "e2e-op-2", "--label", "Slow", "--task", "[e2e:slow] Please wait.", "--dir", DESKTOP, "--model", MODEL])).stdout);
+    assert(created?.job?.id, s, `create: ${JSON.stringify(created)}`);
+    const early = await runOperator(["jobs", "instruct", created.job.id, "please", "hurry"]);
+    assert(early.code === 1 && parseJson(early.stderr)?.code === "not_running", s, `instruct before a recipient connects: ${early.stderr}`);
+
+    const cli = runCli(created.code);
+    state.lastCli = cli;
+    await waitFor(async () => {
+      if (hasExited(cli)) throw new E2EFailure(s, "recipient CLI exited early");
+      const j = parseJson((await runOperator(["jobs", "get", created.job.id])).stdout);
+      return j?.job?.state === "running";
+    }, 20000, "the job to be running");
+
+    const sent = await runOperator(["jobs", "instruct", created.job.id, "also", "tidy", "Downloads"]);
+    assert(sent.code === 0, s, `instruct exited ${sent.code}: ${sent.stderr}`);
+    const events = parseJson((await runOperator(["jobs", "events", created.job.id])).stdout);
+    assert(events.events.some((e) => e.type === "instruction" && e.data.text === "also tidy Downloads"), s, "instruction event missing");
+
+    const stop = parseJson((await runOperator(["jobs", "stop", created.job.id])).stdout);
+    assert(stop?.job?.state === "stopped", s, `stop: ${JSON.stringify(stop)?.slice(0, 300)}`);
+    if (!(await waitExit(cli, 20000))) {
+      await stopChild(cli);
+      throw new E2EFailure(s, "recipient CLI did not exit within 20s after the operator stopped the job");
+    }
+    assert(cli.exitCode !== 0, s, "recipient CLI exited 0 after being stopped");
+    const left = await listTempLeftovers();
+    assert(left.length === 0, s, `leftover entries in ${CLI_TMP}: ${left.join(", ")}`);
+  });
+
+  await step("MCP endpoint serves the same account with the same token", async (s) => {
+    const token = JSON.parse(await fsp.readFile(path.join(OPERATOR_HOME, "credentials.json"), "utf8")).token;
+    const rpc = (id, method, params) => api("POST", "/mcp", { jsonrpc: "2.0", id, method, params }, token);
+    const tools = await rpc(1, "tools/list");
+    assert(tools.json?.result?.tools?.some((t) => t.name === "create_job"), s, `tools/list: ${tools.text.slice(0, 300)}`);
+    const got = await rpc(2, "tools/call", { name: "get_job", arguments: { job_id: op.jobId } });
+    assert(got.json?.result?.structuredContent?.job?.state === "succeeded", s, `get_job: ${got.text.slice(0, 300)}`);
+    assert((await api("POST", "/mcp", { jsonrpc: "2.0", id: 3, method: "ping" })).status === 401, s, "unauthenticated MCP call was not rejected");
+  });
+
+  await step("operator CLI: logout revokes the token for good", async (s) => {
+    const token = JSON.parse(await fsp.readFile(path.join(OPERATOR_HOME, "credentials.json"), "utf8")).token;
+    const out = await runOperator(["logout"]);
+    assert(out.code === 0, s, `logout exited ${out.code}: ${out.stderr}`);
+    assert((await api("GET", "/operator/me", undefined, token)).status === 401, s, "the logged-out token still works");
+    assert((await runOperator(["whoami"])).code === 3, s, "whoami after logout should exit 3");
   });
 
   await step("invalid code rejected with 401", async (s) => {
