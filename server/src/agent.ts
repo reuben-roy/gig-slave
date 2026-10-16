@@ -18,7 +18,7 @@ const EVENT_TYPES = ["status", "tool_call", "tool_result", "assistant", "error",
 const LIVE_STATUSES = ["connecting", "working", "idle"];
 const MAX_FAILS = 5;
 
-function clientIp(c: Context<Env>) {
+export function clientIp(c: Context<any>) {
   const h = (name: string) => c.req.header(name)?.trim() || "";
   const xff = h("x-forwarded-for").split(",")[0]?.trim() || "";
   const socket = c.env?.incoming?.socket?.remoteAddress || "";

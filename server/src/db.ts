@@ -81,6 +81,30 @@ CREATE TABLE IF NOT EXISTS instructions (
 CREATE INDEX IF NOT EXISTS instructions_session ON instructions(session_id, delivered);
 CREATE TABLE IF NOT EXISTS redeem_failures (ip TEXT NOT NULL, ts BIGINT NOT NULL);
 CREATE INDEX IF NOT EXISTS redeem_failures_ip ON redeem_failures(ip, ts);
+-- Operator accounts (agents/tools that create and manage jobs). Tokens are separate from ADMIN_TOKEN and session tokens.
+CREATE TABLE IF NOT EXISTS operators (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL,
+  max_active_jobs INTEGER NOT NULL, max_jobs_per_day INTEGER NOT NULL, max_ttl_hours INTEGER NOT NULL,
+  allowed_models TEXT, created_at BIGINT NOT NULL, revoked_at BIGINT
+);
+CREATE TABLE IF NOT EXISTS operator_tokens (
+  id TEXT PRIMARY KEY, operator_id TEXT NOT NULL REFERENCES operators(id), token_hash TEXT NOT NULL UNIQUE,
+  prefix TEXT NOT NULL, scopes TEXT NOT NULL, created_at BIGINT NOT NULL,
+  expires_at BIGINT, last_used_at BIGINT, revoked_at BIGINT
+);
+CREATE INDEX IF NOT EXISTS operator_tokens_operator ON operator_tokens(operator_id);
+-- Device-style enrollment: an agent asks for access, a human with the admin token approves it.
+CREATE TABLE IF NOT EXISTS enrollments (
+  id TEXT PRIMARY KEY, user_code TEXT NOT NULL UNIQUE, device_hash TEXT NOT NULL UNIQUE, name TEXT NOT NULL,
+  scopes TEXT NOT NULL, status TEXT NOT NULL, operator_id TEXT, token_ttl_days INTEGER,
+  ip TEXT NOT NULL, created_at BIGINT NOT NULL, expires_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS enrollments_ip ON enrollments(ip, created_at);
+ALTER TABLE invites ADD COLUMN IF NOT EXISTS operator_id TEXT;
+ALTER TABLE invites ADD COLUMN IF NOT EXISTS idem_key TEXT;
+ALTER TABLE invites ADD COLUMN IF NOT EXISTS idem_hash TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS invites_idem ON invites(operator_id, idem_key) WHERE idem_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS invites_operator ON invites(operator_id, created_at);
 `;
 
 let driverPromise: Promise<Driver> | null = null;
@@ -142,6 +166,8 @@ export interface InviteRow {
   /** Always 0. Kept for API shape; failed redeems are counted per client IP in redeem_failures, not per invite. */
   failed_attempts: number;
   notify_email: string | null; notify_webhook: string | null;
+  /** Set when an operator account (not the dashboard admin) created the job. */
+  operator_id: string | null; idem_key: string | null; idem_hash: string | null;
   status: "pending" | "active" | "completed" | "expired" | "revoked";
   created_at: number; updated_at: number;
 }
@@ -215,6 +241,7 @@ export const inviteJson = (r: InviteRow) => ({
   expiry_policy: r.expiry_policy, expires_at: r.expires_at, max_redemptions: r.max_redemptions,
   redemptions: r.redemptions, failed_attempts: r.failed_attempts,
   notify_email: r.notify_email, notify_webhook: r.notify_webhook,
+  operator_id: r.operator_id ?? null,
   status: r.status, created_at: r.created_at,
 });
 
