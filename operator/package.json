@@ -1,0 +1,26 @@
+{
+  "name": "gigagent-operator-wip",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hired Gun operator CLI and MCP server (workspace-private placeholder name; not for publishing until the human decides the package name).",
+  "type": "module",
+  "bin": {
+    "hg-operator": "dist/bin.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "postbuild": "node -e \"require('fs').chmodSync('dist/bin.js', 0o755)\"",
+    "test": "tsc -p . && node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0"
+  },
+  "license": "MIT"
+}

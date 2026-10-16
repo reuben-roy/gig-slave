@@ -152,3 +152,30 @@ Sweeper: invites with expires_at < now → expired; sessions alive with last_hea
 - The agent has one extra tool besides read/write/edit/bash: **`submit_report`** with parameters
   `{ success: boolean, summary: string, answer?: string, findings?: {label,value}[], changes?: string[] }`.
   The agent must call it exactly once, as its last action. The CLI turns it into `Result` and sends it with `/agent/complete`. If the agent ends without calling it, the CLI falls back to `{ success: true, summary: <last assistant text>, answer: null, findings: [], changes: [] }`.
+
+
+## Operator API (scoped tokens, additive; design: `docs/operator-api-contract.md`)
+
+Everything above is unchanged. This section adds operator API tokens so a CLI or Claude never needs `ADMIN_TOKEN`. Tokens are accepted only when the server has `OPERATOR_API_ENABLED=1`; with it off, operator tokens are plain 401s.
+
+**Token**: `hg_op_<id:8 alnum>_<secret:43 base64url>`, sent as `Authorization: Bearer`. Only `sha256(secret)` is stored. Shown once at creation. Independent of `ADMIN_TOKEN` (rotating it neither breaks nor revives them). Never accepted in a query string, on `/api/cron/sweep`, or on token routes.
+
+**Scopes**: `config:read`, `invites:read`, `sessions:read`, `invites:create`, `invites:revoke`, `sessions:instruct`, `sessions:kill`, `audit:read`. Presets: `read` (config/invites/sessions/audit read, the default), `claude` (read + `invites:create`), `operate` (claude + `sessions:instruct`), `full` (everything except token management). Routes with no entry in the server's scope table are admin-only (default deny). Missing scope: `403 {"error":"token lacks scope <s>"}`.
+
+**Limits** (per token, JSON, defaults in brackets): `invites_per_day` [20, rolling 24 h, counted from audit rows], `models` [all configured], `max_ttl_hours` [72], `max_redemptions` [5, and required for `ttl` jobs], `webhook_hosts` [none allowed], `notify_emails` [none allowed], `allow_on_complete` [false]. Violations: `403 {"error", "limit": "<name>"}`; daily cap: `429` with `Retry-After`. In-memory per-instance rate limits (reads 120/min burst 30, writes 30/min burst 10): `429 {"error":"rate limited","retry_after_s":n}` + `Retry-After`.
+
+| Route | Auth / scope | Notes |
+|---|---|---|
+| `GET /api/whoami` | any valid | `{principal:"admin"\|"operator", token: {id,label,scopes,limits,created_at,expires_at,last_used_at}\|null, server:{public_url,api:"operator/1",operator_tokens_enabled}}` |
+| `GET /api/invites/:id` | `invites:read` | `{invite: Invite & {sessions}}` |
+| `GET /api/sessions/:id` | `sessions:read` | `{session: Session, invite: Invite\|null}` |
+| `GET /api/invites?status=a,b&limit=1..200&since=<ms>` | `invites:read` | filters are optional; no params = the unchanged listing |
+| `POST /api/invites` + header `Idempotency-Key: 8..64 [A-Za-z0-9_-]` | `invites:create` | same key + same body within 24 h returns `200 {invite, code:null, command:null, replay:true}` with `Idempotent-Replay: true` (the code is never stored, so it is not repeated); different body `422`; applies to the admin token too |
+| `POST /api/operator-tokens` `{label, preset?\|scopes?, expires_in_days? (default 30, max OPERATOR_TOKEN_MAX_DAYS=90, null = never), limits?}` | admin only | `201 {token, record}` |
+| `GET /api/operator-tokens` | admin only | `{tokens: record[]}` (no secrets or hashes) |
+| `POST /api/operator-tokens/:id/revoke`, `POST /api/operator-tokens/revoke-all` | admin only | `{ok:true}` / `{ok:true, revoked:n}`; effective on the next request |
+| `GET /api/audit?after=<id>&limit=1..200&token_id=&action=` | `audit:read` | `{entries: AuditEntry[], next}`; operator tokens see only their own entries |
+
+`AuditEntry = { id, ts, actor:"admin"|"operator", token_id, token_label, action, target_type, target_id, status, ok, ip, client, detail }`. Actions: `invite.create`, `invite.revoke`, `session.instruct`, `session.kill`, `token.create`, `token.revoke`, `token.revoke_all`, `auth.denied` (sampled, known token ids only). Mutations by the admin token are audited only while `OPERATOR_API_ENABLED=1`; token management is always audited. Never stored: token secrets, request bodies, task text, instruction text, invite codes. Optional request header `X-Hired-Gun-Client` (advisory, 64 chars) is recorded as `client`.
+
+Env (optional): `OPERATOR_API_ENABLED` (`1`), `OPERATOR_TOKEN_MAX_DAYS` (90), `OPERATOR_AUDIT_RETENTION_DAYS` (180), `OPERATOR_RATE_MULTIPLIER` (test knob, 1). New tables (additive): `operator_tokens`, `operator_audit`, `idempotency_keys`.

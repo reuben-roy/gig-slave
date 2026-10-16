@@ -4,6 +4,8 @@ import { Hono } from "hono";
 import { admin } from "./admin.js";
 import { agent } from "./agent.js";
 import { config } from "./config.js";
+import { operatorRoutes } from "./operator.js";
+import { gate } from "./operatorAuth.js";
 import { proxy } from "./proxy.js";
 
 /**
@@ -54,6 +56,10 @@ app.use("*", async (c, next) => {
 // /agent/redeem (unauthenticated by design) does not sweep either. Every DB helper awaits ensureSchema() itself;
 // redeem also calls it explicitly up front.
 
+// Operator API tokens (docs/operator-api-contract.md): `gate` resolves the principal and enforces scopes/limits/audit for
+// operator tokens (admin and anonymous requests pass straight through), then `operatorRoutes` adds the new routes.
+app.use("/api/*", gate);
+app.route("/api", operatorRoutes);
 app.route("/api", admin);
 app.route("/agent", agent);
 app.route("/v1", proxy);

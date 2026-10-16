@@ -81,6 +81,23 @@ CREATE TABLE IF NOT EXISTS instructions (
 CREATE INDEX IF NOT EXISTS instructions_session ON instructions(session_id, delivered);
 CREATE TABLE IF NOT EXISTS redeem_failures (ip TEXT NOT NULL, ts BIGINT NOT NULL);
 CREATE INDEX IF NOT EXISTS redeem_failures_ip ON redeem_failures(ip, ts);
+-- Operator API (docs/operator-api-contract.md). Additive; unused unless OPERATOR_API_ENABLED / token routes are used.
+CREATE TABLE IF NOT EXISTS operator_tokens (
+  id TEXT PRIMARY KEY, secret_hash TEXT NOT NULL, label TEXT NOT NULL, scopes TEXT NOT NULL,
+  limits TEXT NOT NULL DEFAULT '{}', created_at BIGINT NOT NULL, created_by TEXT NOT NULL,
+  expires_at BIGINT, last_used_at BIGINT, revoked_at BIGINT
+);
+CREATE TABLE IF NOT EXISTS operator_audit (
+  id BIGSERIAL PRIMARY KEY, ts BIGINT NOT NULL, actor TEXT NOT NULL, token_id TEXT, action TEXT NOT NULL,
+  target_type TEXT, target_id TEXT, status INTEGER NOT NULL, ok BOOLEAN NOT NULL,
+  ip TEXT, client TEXT, detail TEXT
+);
+CREATE INDEX IF NOT EXISTS operator_audit_token ON operator_audit(token_id, action, ts);
+CREATE INDEX IF NOT EXISTS operator_audit_ts ON operator_audit(ts);
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+  actor_key TEXT NOT NULL, idem_key TEXT NOT NULL, body_hash TEXT NOT NULL,
+  invite_id TEXT, created_at BIGINT NOT NULL, PRIMARY KEY (actor_key, idem_key)
+);
 `;
 
 let driverPromise: Promise<Driver> | null = null;

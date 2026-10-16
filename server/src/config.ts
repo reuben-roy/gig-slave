@@ -69,6 +69,12 @@ export const config = {
   // Merged into every direct upstream request. For DeepSeek this turns thinking off, because thinking mode
   // requires reasoning_content to be echoed back on every tool-call turn.
   upstreamExtraBody: parseExtraBody("UPSTREAM_EXTRA_BODY", env.UPSTREAM_EXTRA_BODY),
+  // Operator API tokens (scoped, revocable; see docs/operator-api-contract.md). Off unless OPERATOR_API_ENABLED=1.
+  operatorApiEnabled: env.OPERATOR_API_ENABLED === "1" || env.OPERATOR_API_ENABLED === "true",
+  // Test knob: scales the in-memory per-token rate limits (1 = documented limits).
+  operatorRateMultiplier: Number(env.OPERATOR_RATE_MULTIPLIER) > 0 ? Number(env.OPERATOR_RATE_MULTIPLIER) : 1,
+  operatorTokenMaxDays: Number(env.OPERATOR_TOKEN_MAX_DAYS) > 0 ? Number(env.OPERATOR_TOKEN_MAX_DAYS) : 90,
+  operatorAuditRetentionDays: Number(env.OPERATOR_AUDIT_RETENTION_DAYS) > 0 ? Number(env.OPERATOR_AUDIT_RETENTION_DAYS) : 180,
   resendApiKey: env.RESEND_API_KEY ?? "",
   notifyFrom: env.NOTIFY_FROM || "Hired Gun <onboarding@resend.dev>",
   sessionTokenBudget: Number(env.SESSION_TOKEN_BUDGET) > 0 ? Number(env.SESSION_TOKEN_BUDGET) : 2_000_000,

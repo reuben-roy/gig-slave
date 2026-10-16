@@ -26,6 +26,7 @@ admin.use("*", async (c, next) => {
   const query = c.req.path.endsWith("/stream") ? c.req.query("token") : undefined;
   const isCron = c.req.path.endsWith("/cron/sweep");
   const ok =
+    (c as any).get("opAuthed") === true || // set only by operatorAuth.gate after scope checks
     secretOk(bearer ?? query, config.adminToken) || (isCron && secretOk(bearer, config.cronSecret));
   if (!ok) return c.json({ error: "unauthorized" }, 401);
   await ensureSchema();

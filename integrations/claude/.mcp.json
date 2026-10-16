@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "hired-gun": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/../../operator/dist/bin.js", "mcp"]
+    }
+  }
+}

@@ -4,16 +4,18 @@
   "workspaces": [
     "server",
     "cli",
+    "operator",
     "mock"
   ],
   "scripts": {
     "dev:server": "npm run dev -w server",
-    "build": "npm run build -w server && npm run build -w cli",
-    "e2e": "node e2e/run.mjs",
-    "test": "npm test -w server",
+    "build": "npm run build -w server && npm run build -w cli && npm run build -w operator",
+    "e2e": "node e2e/run.mjs && node e2e/operator.mjs",
+    "test": "npm test -w server && npm test -w operator",
     "measure": "npm run build -w server && node scripts/measure-usage.mjs",
     "start": "npm run start -w server",
-    "tunnel": "node scripts/tunnel.mjs"
+    "tunnel": "node scripts/tunnel.mjs",
+    "e2e:operator": "node e2e/operator.mjs"
   },
   "engines": {
     "node": ">=22.13"

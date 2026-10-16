@@ -38,6 +38,11 @@ Nothing below was done by the redesign; each needs your decision or your account
 - [ ] **Social preview image**: `og:image` is a relative `/assets/og.png`; some crawlers want an absolute URL, which needs your final domain.
 - [ ] Rename the GitHub repo / local folder `gig-slave` if you want it to match the new name.
 
+## Operator API and Claude integration (human steps)
+- [ ] **Pick the final name** for the operator CLI/package (placeholder: `hg-operator`, workspace-private `gigagent-operator-wip`; `hiredgun`, `gigagent-operator`, `@hiredgun/cli` were unclaimed on npm on 2026-10-16). Change it in `operator/src/names.ts`, `operator/package.json` and `integrations/claude/**`, then publish yourself (needs your npm 2FA). Nothing was published.
+- [ ] **Enable it** only when you want it: set `OPERATOR_API_ENABLED=1` in Vercel (Preview first), redeploy, then mint a token: `GIGAGENT_ADMIN_TOKEN=... node operator/dist/bin.js tokens create --label me --preset full --save`. Mint a separate `--preset read` (or `claude`) token for Claude.
+- [ ] **Decide** whether Claude should ever get a write token (`claude` preset can create jobs; instruct/kill/revoke are never exposed over MCP) and whether you want a server-side approval gate for operator-created jobs (not built).
+
 ## Done
 - [x] `.env` is set up for local runs (model key, random admin token).
 - [x] Real DeepSeek test through the self-hosting tunnel passed on a throwaway folder (`~/gig-slave-test`).

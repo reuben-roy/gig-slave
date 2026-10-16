@@ -160,6 +160,23 @@ The "Lost connection" notification comes from the sweeper at `GET /api/cron/swee
 curl -s https://YOUR-SERVER/api/cron/sweep -H "Authorization: Bearer $CRON_SECRET"
 ```
 
+
+## Operator CLI and Claude (optional)
+
+A terminal client and an MCP server for the operator, using scoped, revocable tokens instead of `ADMIN_TOKEN`. Contract: [CONTRACT.md](CONTRACT.md#operator-api-scoped-tokens-additive-design-docsoperator-api-contractmd); design and safety rules: [docs/operator-api-contract.md](docs/operator-api-contract.md); Claude setup: [integrations/claude/README.md](integrations/claude/README.md). The command name `hg-operator` and the workspace package `gigagent-operator-wip` are placeholders until the final name is chosen. `npx gigagent ABCD-EFGH` for recipients is untouched.
+
+```bash
+# server: set OPERATOR_API_ENABLED=1 (Vercel env or .env), redeploy
+export GIGAGENT_SERVER=https://YOUR-SERVER
+GIGAGENT_ADMIN_TOKEN=... node operator/dist/bin.js tokens create --label me --preset full --save   # token saved privately, not printed
+node operator/dist/bin.js doctor
+node operator/dist/bin.js jobs create --label "Tidy Desktop" --task "Organize my Desktop into folders by type."   # asks to confirm
+node operator/dist/bin.js sessions wait <session-id> && node operator/dist/bin.js sessions report <session-id>
+node operator/dist/bin.js --help          # add --json to any command for machine-readable output
+```
+
+Tokens never go on the command line: use `login` (hidden prompt or `--stdin`), `GIGAGENT_OPERATOR_TOKEN`, `GIGAGENT_OPERATOR_TOKEN_FILE`, or the macOS Keychain (service `gigagent-operator`, account = server origin). Revoke one with `tokens revoke <id>`, all with `tokens revoke-all`.
+
 ## Safety model
 
 Built into the system:

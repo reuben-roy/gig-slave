@@ -1,0 +1,5 @@
+{
+  "name": "hired-gun",
+  "version": "0.1.0",
+  "description": "Operate Hired Gun jobs from Claude: look at jobs and reports, and create a job only after an explicit human yes."
+}

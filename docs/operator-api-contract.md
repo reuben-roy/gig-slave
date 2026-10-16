@@ -1,6 +1,6 @@
-# Operator API, operator CLI and Claude integration: contract (Phase 1, design only)
+# Operator API, operator CLI and Claude integration: contract and design
 
-Status: proposal, 2026-10-16. Author: worker `hired-gun-operator-api`. No production code exists yet.
+Status: implemented (Phase 2), 2026-10-16; see "Implementation notes" at the end for where the build differs from the Phase 1 text below. Author: worker `hired-gun-operator-api`. The binding API text now lives in CONTRACT.md ("Operator API").
 Precedence: `CONTRACT.md` wins on any conflict. Phase 2 merges the "Operator API" parts of this document into `CONTRACT.md` (as one appended section) and then this file becomes a design note.
 
 Source of the request (the only one I was given): "operator API/CLI and Claude-compatible integration". Everything beyond that sentence is my interpretation and is marked **[A]** (assumption) or **[Q]** (open question, section 9).
@@ -457,3 +457,20 @@ Conflict risk is relative to the integrator's pending commits (idle-polling fix 
 **Will not be touched:** `cli/**`, `server/src/agent.ts`, `proxy.ts`, `lifecycle.ts`, `sweeper.ts`, `notify.ts`, `server/public/**`, `e2e/run.mjs`, `mock/**`, `worker/**`, `scripts/**`, `DESIGN.md`, `.env*`, `.vercel/**`.
 
 **Assumption to verify first in Phase 2:** Hono runs `admin.use("*")` middleware for routes added by a second `app.route("/api", ...)` group registered after it; if not, the extra routes are added inside `admin.ts` via `admin.route("/", operatorRoutes)` (one more line in the high-risk file).
+
+---
+
+## 11. Implementation notes (Phase 2: where the build differs from the text above)
+
+Open questions were answered with the conservative defaults: no server-enforced approval gate in v1; operator tokens default to the `read` preset; Claude tokens never get instruct/kill; webhook and email targets are off by default; no plaintext invite code is stored for idempotent replays; no new dashboard UI.
+
+- **Wiring.** `server/src/operatorAuth.ts` exports `gate`, mounted in `index.ts` as `app.use("/api/*", gate)` before `app.route("/api", operatorRoutes)` and the unchanged admin router. `admin.ts` has a single added line (the admin middleware also accepts a request the gate has already authorised); `stream.ts` and the dashboard are untouched. Admin and anonymous requests pass through the gate with no database work. New files: `operatorAuth.ts`, `operator.ts`, `audit.ts`.
+- **Token id** is 8 alphanumeric characters (no `_`/`-`) so the `hg_op_<id>_<secret>` format parses unambiguously.
+- **Presets**: `read` (default), `claude` (read + `invites:create`), `operate` (+ `sessions:instruct`), `full`. **Limits** default to webhook and email off for every token, `allow_on_complete:false`, and `ttl` jobs must carry `max_redemptions` (cap 5).
+- **MCP exposes no instruct, kill or revoke tool at all** in v1, whatever the token's scopes; those stay CLI-only. Tool list: whoami, get_config, list_jobs, get_job, get_session, get_session_events, prepare_job, create_job.
+- **Idempotency** stores only the key, a body hash and the invite id. A replay returns `200 {invite, code:null, command:null, replay:true}`; the MCP create tool derives its key from the draft id so a retried call cannot make a second code.
+- **Audit of admin-token mutations** happens only while `OPERATOR_API_ENABLED=1` (dark launch changes no legacy behaviour); token management routes are always audited. `auth.denied` rows are sampled once per minute per (token id, reason) and only for known token ids.
+- **MCP server is hand-rolled** (newline-delimited JSON-RPC over stdio, protocol versions 2025-06-18, 2025-03-26, 2024-11-05, optional elicitation), so the operator package has zero runtime dependencies and no `@modelcontextprotocol/sdk` pin is needed.
+- **Operator package**: workspace `operator/`, private, name `gigagent-operator-wip`, bin `hg-operator` (placeholders; one constant in `operator/src/names.ts`). `--profile` was dropped; there is no baked default server (explicit `--server`, `GIGAGENT_SERVER` or the saved login). Keychain is read-only (writing a secret with `security add-generic-password -w` would expose it in `ps`); saving uses the 0600 file. Added `tokens create --save` (store the new token as the login without printing it) and `--never-expires`.
+- **Test knob** `OPERATOR_RATE_MULTIPLIER` scales the in-memory rate limits for test runs only.
+- **Tests**: `server/test/operator-api.test.mjs`, `operator-dark.test.mjs`; `operator/test/cli.test.mjs`, `mcp.test.mjs`; `e2e/operator.mjs` (`npm run e2e:operator`, also run by `npm run e2e`).

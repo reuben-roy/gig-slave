@@ -8,3 +8,4 @@ e2e/.tmp/
 .DS_Store
 .vercel
 .env*
+e2e/.tmp-operator/
