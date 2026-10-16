@@ -269,6 +269,14 @@ describe("limits", () => {
     assert.equal(admin.status, 201);
   });
 
+  it("bounds the size of operator-supplied text", async () => {
+    const op = await newOperator("big", { max_active_jobs: 5 });
+    assert.equal((await call("POST", "/operator/jobs", { token: op.token, body: job({ task: "x".repeat(8001) }) })).status, 400);
+    const ok = await call("POST", "/operator/jobs", { token: op.token, body: job() });
+    const r = await call("POST", `/operator/jobs/${ok.body.job.id}/instructions`, { token: op.token, body: { text: "y".repeat(4001) } });
+    assert.equal(r.status, 400);
+  });
+
   it("operator jobs always expire", async () => {
     const op = await newOperator("exp", { max_active_jobs: 5 });
     const j = (await call("POST", "/operator/jobs", { token: op.token, body: job() })).body.job;

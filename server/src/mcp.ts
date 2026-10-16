@@ -83,6 +83,7 @@ mcp.post("/", async (c) => {
   const body = await c.req.json().catch(() => undefined);
   if (body === undefined) return c.json(rpcError(null, -32700, "parse error"), 400);
   if (Array.isArray(body)) {
+    if (body.length > 20) return c.json(rpcError(null, -32600, "batch too large (max 20)"), 400);
     const out = (await Promise.all(body.map((m) => handle(m, auth)))).filter((r) => r !== null);
     return out.length ? c.json(out) : c.body(null, 202);
   }

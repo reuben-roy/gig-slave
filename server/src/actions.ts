@@ -171,7 +171,7 @@ export const actions: Action[] = [
     async run(auth, input) {
       const invite = await loadJob(auth, input.job_id);
       const text = str(input.text);
-      if (!text) throw new ServiceError(400, "invalid_request", "text is required");
+      if (!text || text.length > 4000) throw new ServiceError(400, "invalid_request", "text is required and limited to 4000 characters");
       const session = await liveSession(invite.id);
       if (!session) throw new ServiceError(409, "not_running", "no recipient is connected to this job right now");
       await sendInstruction(session, invite, text);

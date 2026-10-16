@@ -64,6 +64,7 @@ export async function createInvite(
   const task = str(b.task);
   if (!label) throw bad("label is required");
   if (!task) throw bad("task is required");
+  if (owner && (label.length > 120 || task.length > 8000)) throw bad("label is limited to 120 characters and task to 8000");
 
   const policy = b.expiry_policy as string;
   if (!POLICIES.includes(policy)) throw bad("expiry_policy must be one_use, on_complete or ttl");
