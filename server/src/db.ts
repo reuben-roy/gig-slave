@@ -100,6 +100,21 @@ CREATE TABLE IF NOT EXISTS enrollments (
   ip TEXT NOT NULL, created_at BIGINT NOT NULL, expires_at BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS enrollments_ip ON enrollments(ip, created_at);
+-- OAuth: public clients (PKCE), short-lived authorization codes, and tokens issued from them (same table as machine tokens).
+CREATE TABLE IF NOT EXISTS oauth_clients (
+  client_id TEXT PRIMARY KEY, name TEXT NOT NULL, redirect_uris TEXT NOT NULL, ip TEXT NOT NULL, created_at BIGINT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS oauth_codes (
+  code_hash TEXT PRIMARY KEY, client_id TEXT NOT NULL, operator_id TEXT NOT NULL, scopes TEXT NOT NULL,
+  redirect_uri TEXT NOT NULL, code_challenge TEXT NOT NULL, expires_at BIGINT NOT NULL, used BOOLEAN NOT NULL DEFAULT FALSE
+);
+ALTER TABLE operator_tokens ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'machine';
+ALTER TABLE operator_tokens ADD COLUMN IF NOT EXISTS client_id TEXT;
+ALTER TABLE operator_tokens ADD COLUMN IF NOT EXISTS grant_id TEXT;
+ALTER TABLE operator_tokens ADD COLUMN IF NOT EXISTS refresh_hash TEXT;
+ALTER TABLE operator_tokens ADD COLUMN IF NOT EXISTS refresh_expires_at BIGINT;
+CREATE UNIQUE INDEX IF NOT EXISTS operator_tokens_refresh ON operator_tokens(refresh_hash) WHERE refresh_hash IS NOT NULL;
+CREATE INDEX IF NOT EXISTS operator_tokens_grant ON operator_tokens(grant_id);
 ALTER TABLE invites ADD COLUMN IF NOT EXISTS operator_id TEXT;
 ALTER TABLE invites ADD COLUMN IF NOT EXISTS idem_key TEXT;
 ALTER TABLE invites ADD COLUMN IF NOT EXISTS idem_hash TEXT;

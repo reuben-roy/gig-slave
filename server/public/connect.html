@@ -13,24 +13,25 @@
   .panel { background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius); padding: 1.25rem; display: grid; gap: 1rem; }
   label { display: grid; gap: 0.3rem; font-weight: 650; font-size: 0.9rem; }
   label small { font-weight: 400; color: var(--text-2); }
-  input[type=text], input[type=password], input[type=number] { font: inherit; padding: 0.55rem 0.7rem; border: 1.5px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); width: 100%; }
+  input[type=text], input[type=password], input[type=number], select { font: inherit; padding: 0.55rem 0.7rem; border: 1.5px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); width: 100%; }
   fieldset { border: 1.5px solid var(--border); border-radius: var(--radius-sm); margin: 0; padding: 0.6rem 0.8rem; display: grid; gap: 0.35rem; }
   legend { font-weight: 650; font-size: 0.9rem; padding: 0 0.3rem; }
   fieldset label { display: flex; gap: 0.5rem; align-items: center; font-weight: 400; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
   .code { font-family: var(--font-mono); font-size: 1.6rem; font-weight: 700; letter-spacing: 0.08em; }
   .row { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+  .stack { display: grid; gap: 1rem; }
   .msg { padding: 0.7rem 0.9rem; border-radius: var(--radius-sm); font-weight: 600; }
   .msg.ok { background: var(--ok-soft); color: var(--ok); }
   .msg.bad { background: var(--bad-soft); color: var(--bad); }
-  p { margin: 0; } .muted { color: var(--text-2); }
+  p, h1, h2 { margin: 0; } .muted { color: var(--text-2); }
 </style>
 </head>
 <body>
 <main>
   <a class="lockup" href="/"><img src="/assets/logo.svg" alt="" width="30" height="30"> Hired Gun</a>
   <h1>Agent access</h1>
-  <p class="muted">Agents and tools can have their own operator access to create and watch jobs without the dashboard. Nothing is granted until you approve it here, and you can revoke it at any time.</p>
+  <p class="muted" id="intro">Agents and tools can have their own operator access to create and watch jobs without the dashboard. Nothing is granted until you approve it here, and you can revoke it at any time.</p>
 
   <section class="panel" id="signin" hidden>
     <label>Admin token <small>The same one the dashboard asks for. It stays in this browser tab and is only sent to this site.</small>
@@ -39,19 +40,24 @@
   </section>
 
   <section class="panel" id="review" hidden>
-    <div><span class="muted">Code shown by the agent</span><div class="code" id="user-code"></div></div>
-    <label>Name <input type="text" id="name" maxlength="80"></label>
+    <div id="enroll-head"><span class="muted">Code shown by the agent</span><div class="code" id="user-code"></div></div>
+    <p id="oauth-head" hidden></p>
+    <label id="link-row" hidden>Link it to
+      <select id="link"></select></label>
+    <div class="stack" id="new-fields">
+      <label>Account name <input type="text" id="name" maxlength="80"></label>
+      <div class="grid2">
+        <label>Jobs running at once <input type="number" id="max-active" min="1" max="20" value="3"></label>
+        <label>Jobs per 24 hours <input type="number" id="max-day" min="1" max="200" value="20"></label>
+        <label>Longest job (hours) <input type="number" id="max-ttl" min="1" max="720" value="72"></label>
+        <label id="days-row">Access expires after (days) <input type="number" id="token-days" min="1" max="365" value="90"></label>
+      </div>
+      <fieldset id="models"><legend>Models it may use</legend></fieldset>
+    </div>
     <fieldset id="scopes"><legend>Allow it to</legend>
       <label><input type="checkbox" value="jobs:read" checked> Read jobs, their progress and results</label>
       <label><input type="checkbox" value="jobs:write" checked> Create jobs, send instructions and stop jobs</label>
     </fieldset>
-    <div class="grid2">
-      <label>Jobs running at once <input type="number" id="max-active" min="1" max="20" value="3"></label>
-      <label>Jobs per 24 hours <input type="number" id="max-day" min="1" max="200" value="20"></label>
-      <label>Longest job (hours) <input type="number" id="max-ttl" min="1" max="720" value="72"></label>
-      <label>Access expires after (days) <input type="number" id="token-days" min="1" max="365" value="90"></label>
-    </div>
-    <fieldset id="models"><legend>Models it may use</legend></fieldset>
     <p class="muted">Jobs it creates still only run when someone runs the job's code on their own computer.</p>
     <div class="row">
       <button class="btn btn-primary" id="approve" type="button">Approve</button>
@@ -70,9 +76,13 @@
 (function () {
   const $ = (id) => document.getElementById(id);
   const KEY = 'gigagentAdminToken';
-  const code = new URLSearchParams(location.search).get('code') || '';
+  const params = new URLSearchParams(location.search);
+  const code = params.get('code') || '';
+  // OAuth mode: /oauth/authorize redirects here with the connector's request.
+  const oauth = params.get('response_type') === 'code' ? Object.fromEntries(params) : null;
   let token = '';
   try { token = sessionStorage.getItem(KEY) || localStorage.getItem(KEY) || ''; } catch (e) {}
+  let operators = [];
 
   function say(text, ok) { const m = $('msg'); m.textContent = text; m.className = 'msg ' + (ok ? 'ok' : 'bad'); m.hidden = !text; }
   async function api(method, path, body) {
@@ -84,15 +94,16 @@
 
   const when = (ms) => (ms ? new Date(ms).toLocaleString() : 'never');
   async function loadAccounts() {
-    const { operators } = await api('GET', '/api/operators');
+    operators = (await api('GET', '/api/operators')).operators;
     const list = $('account-list');
     list.replaceChildren();
     for (const o of operators) {
       const box = document.createElement('div');
       const live = o.tokens.filter((t) => !t.revoked_at);
       const lastUsed = Math.max(0, ...live.map((t) => t.last_used_at || 0));
+      const via = [...new Set(live.map((t) => (t.kind === 'oauth' ? 'connector' : 'CLI/API token')))].join(', ') || 'no live tokens';
       const info = document.createElement('p');
-      info.textContent = o.name + ' \u2014 ' + (o.status === 'active' ? 'active' : 'revoked') + '. ' + o.usage.active_jobs + ' of ' + o.limits.max_active_jobs + ' jobs running, ' +
+      info.textContent = o.name + ' — ' + (o.status === 'active' ? 'active' : 'revoked') + ' (' + via + '). ' + o.usage.active_jobs + ' of ' + o.limits.max_active_jobs + ' jobs running, ' +
         o.usage.jobs_today + ' today. Last used ' + when(lastUsed) + '.';
       box.append(info);
       if (o.status === 'active') {
@@ -106,27 +117,72 @@
     $('accounts').hidden = false;
   }
 
+  function fillModels(cfg) {
+    const box = $('models');
+    box.querySelectorAll('label').forEach((l) => l.remove());
+    for (const m of cfg.model_options) {
+      const l = document.createElement('label'); const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.value = m.id; cb.checked = true;
+      l.append(cb, document.createTextNode(m.label)); box.append(l);
+    }
+  }
+  function limitsBody() {
+    return {
+      max_active_jobs: +$('max-active').value, max_jobs_per_day: +$('max-day').value, max_ttl_hours: +$('max-ttl').value,
+      allowed_models: [...document.querySelectorAll('#models input:checked')].map((c) => c.value),
+    };
+  }
+  const grantedScopes = () => [...document.querySelectorAll('#scopes input:checked')].map((c) => c.value);
+
+  async function showEnrollment() {
+    const [{ enrollments }, cfg] = await Promise.all([api('GET', '/api/enrollments'), api('GET', '/api/config')]);
+    const e = enrollments.find((x) => x.user_code === code.toUpperCase());
+    if (!e) return say('No waiting request with that code. It may have expired, or already been approved or denied.', false);
+    $('user-code').textContent = e.user_code;
+    $('name').value = e.name;
+    for (const cb of document.querySelectorAll('#scopes input')) { cb.checked = e.scopes.includes(cb.value); cb.disabled = !e.scopes.includes(cb.value); }
+    fillModels(cfg);
+    $('review').hidden = false;
+  }
+
+  async function showOauth() {
+    const [client, cfg] = await Promise.all([api('GET', '/api/oauth/clients/' + encodeURIComponent(oauth.client_id)), api('GET', '/api/config')]);
+    $('intro').textContent = 'A connector is asking to act on your Hired Gun account.';
+    $('enroll-head').hidden = true;
+    $('oauth-head').hidden = false;
+    $('oauth-head').textContent = '“' + client.name + '” wants to create, watch and stop jobs for you. It will be sent back to ' + new URL(oauth.redirect_uri).host + ' once you decide.';
+    $('days-row').hidden = true;
+    fillModels(cfg);
+    $('name').value = client.name;
+    const asked = (oauth.scope || '').split(' ');
+    for (const cb of document.querySelectorAll('#scopes input')) { cb.checked = asked.includes(cb.value); cb.disabled = !asked.includes(cb.value); }
+    const link = $('link');
+    link.replaceChildren(new Option('A new account for this connector', ''));
+    for (const o of operators.filter((x) => x.status === 'active')) link.append(new Option(o.name + ' (existing account)', o.id));
+    $('link-row').hidden = false;
+    link.onchange = () => { $('new-fields').hidden = !!link.value; };
+    $('review').hidden = false;
+  }
+
+  async function decide(approve) {
+    const body = { approve, client_id: oauth.client_id, redirect_uri: oauth.redirect_uri, state: oauth.state, code_challenge: oauth.code_challenge, code_challenge_method: oauth.code_challenge_method };
+    if (approve) {
+      body.scopes = grantedScopes();
+      if ($('link').value) body.operator_id = $('link').value;
+      else body.new_operator = { name: $('name').value, ...limitsBody() };
+    }
+    const r = await api('POST', '/api/oauth/authorize', body);
+    location.href = r.redirect_to;
+  }
+
   async function load() {
     say('');
     $('signin').hidden = true; $('review').hidden = true; $('accounts').hidden = true;
     if (!token) { $('signin').hidden = false; return; }
     try {
       await loadAccounts();
-      if (!code) return;
-      const [{ enrollments }, cfg] = await Promise.all([api('GET', '/api/enrollments'), api('GET', '/api/config')]);
-      const e = enrollments.find((x) => x.user_code === code.toUpperCase());
-      if (!e) return say('No waiting request with that code. It may have expired, or already been approved or denied.', false);
-      $('user-code').textContent = e.user_code;
-      $('name').value = e.name;
-      for (const cb of document.querySelectorAll('#scopes input')) { cb.checked = e.scopes.includes(cb.value); cb.disabled = !e.scopes.includes(cb.value); }
-      const box = $('models');
-      box.querySelectorAll('label').forEach((l) => l.remove());
-      for (const m of cfg.model_options) {
-        const l = document.createElement('label'); const cb = document.createElement('input');
-        cb.type = 'checkbox'; cb.value = m.id; cb.checked = true;
-        l.append(cb, document.createTextNode(m.label)); box.append(l);
-      }
-      $('review').hidden = false;
+      if (oauth) await showOauth();
+      else if (code) await showEnrollment();
     } catch (err) {
       if (err.status === 401) { token = ''; try { sessionStorage.removeItem(KEY); } catch (e) {} $('signin').hidden = false; return say('That admin token was not accepted.', false); }
       say(err.message, false);
@@ -135,21 +191,20 @@
 
   $('signin-go').onclick = () => { token = $('token').value.trim(); try { sessionStorage.setItem(KEY, token); } catch (e) {} load(); };
   $('approve').onclick = async () => {
-    const models = [...document.querySelectorAll('#models input:checked')].map((c) => c.value);
-    const scopes = [...document.querySelectorAll('#scopes input:checked')].map((c) => c.value);
-    if (!scopes.length || !models.length) return say('Pick at least one permission and one model.', false);
+    const scopes = grantedScopes();
+    const models = limitsBody().allowed_models;
+    if (!scopes.length || (!(oauth && $('link').value) && !models.length)) return say('Pick at least one permission and one model.', false);
     try {
-      await api('POST', '/api/enrollments/' + encodeURIComponent(code) + '/approve', {
-        name: $('name').value, scopes, allowed_models: models,
-        max_active_jobs: +$('max-active').value, max_jobs_per_day: +$('max-day').value,
-        max_ttl_hours: +$('max-ttl').value, token_ttl_days: +$('token-days').value,
-      });
+      if (oauth) return await decide(true);
+      await api('POST', '/api/enrollments/' + encodeURIComponent(code) + '/approve', { name: $('name').value, scopes, token_ttl_days: +$('token-days').value, ...limitsBody() });
       $('review').hidden = true; loadAccounts().catch(() => {}); say('Approved. The agent will receive its access within a few seconds. You can revoke it below at any time.', true);
     } catch (err) { say(err.message, false); }
   };
   $('deny').onclick = async () => {
-    try { await api('POST', '/api/enrollments/' + encodeURIComponent(code) + '/deny'); $('review').hidden = true; say('Denied. The agent gets nothing.', true); }
-    catch (err) { say(err.message, false); }
+    try {
+      if (oauth) return await decide(false);
+      await api('POST', '/api/enrollments/' + encodeURIComponent(code) + '/deny'); $('review').hidden = true; say('Denied. The agent gets nothing.', true);
+    } catch (err) { say(err.message, false); }
   };
   load();
 })();

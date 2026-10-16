@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { actions, actionByName, runAction } from "./actions.js";
 import { ServiceError } from "./jobs.js";
-import { requireOperator } from "./operator.js";
+import { requireOperator, wwwAuthenticate } from "./operator.js";
 import type { OperatorAuth } from "./operators.js";
 
 /**
@@ -76,7 +76,7 @@ mcp.post("/", async (c) => {
     auth = await requireOperator(c.req.header("authorization"));
   } catch (e) {
     if (e instanceof ServiceError) {
-      return c.json({ error: e.message, code: e.code }, 401, { "WWW-Authenticate": 'Bearer realm="hired-gun"' });
+      return c.json({ error: e.message, code: e.code }, 401, wwwAuthenticate());
     }
     throw e;
   }

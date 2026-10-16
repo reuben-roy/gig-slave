@@ -5,6 +5,7 @@ import { admin } from "./admin.js";
 import { agent } from "./agent.js";
 import { config } from "./config.js";
 import { mcp } from "./mcp.js";
+import { oauth, wellKnown } from "./oauth.js";
 import { operator } from "./operator.js";
 import { ServiceError } from "./jobs.js";
 import { proxy } from "./proxy.js";
@@ -45,7 +46,7 @@ app.get("/", async (c) => {
 // Misconfiguration (e.g. missing ADMIN_TOKEN) fails the API clearly, but never the static landing page.
 app.use("*", async (c, next) => {
   const p = c.req.path;
-  if (["/api", "/agent", "/v1", "/operator", "/mcp"].some((x) => p.startsWith(x)) && config.errors.length) {
+  if (["/api", "/agent", "/v1", "/operator", "/mcp", "/oauth"].some((x) => p.startsWith(x)) && config.errors.length) {
     const msg = `server misconfigured: ${config.errors.join("; ")}`;
     return c.json(p.startsWith("/v1") ? { error: { message: msg } } : { error: msg }, 500);
   }
@@ -62,6 +63,8 @@ app.route("/agent", agent);
 app.route("/v1", proxy);
 app.route("/operator", operator);
 app.route("/mcp", mcp);
+app.route("/oauth", oauth);
+app.route("/.well-known", wellKnown);
 
 app.notFound((c) => c.json({ error: "not found" }, 404));
 app.onError((e, c) => {

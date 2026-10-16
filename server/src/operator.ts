@@ -1,6 +1,7 @@
 import { Hono, type Context } from "hono";
 import { runAction } from "./actions.js";
 import { clientIp } from "./agent.js";
+import { config } from "./config.js";
 import { ensureSchema } from "./db.js";
 import { ServiceError } from "./jobs.js";
 import { authenticateOperator, collectEnrollment, revokeToken, startEnrollment, type OperatorAuth } from "./operators.js";
@@ -27,7 +28,10 @@ operator.post("/enroll/token", async (c) => {
   return c.json(r, r.status === "pending" ? 202 : 200);
 });
 
-const WWW_AUTH = { "WWW-Authenticate": 'Bearer realm="hired-gun"' };
+/** Tells OAuth-capable clients (Claude, ChatGPT) where to start the authorization flow. */
+export const wwwAuthenticate = () => ({
+  "WWW-Authenticate": `Bearer realm="hired-gun", resource_metadata="${config.publicUrl}/.well-known/oauth-protected-resource"`,
+});
 
 /** Shared by the REST routes and the MCP endpoint. */
 export async function requireOperator(header: string | undefined) {
@@ -41,7 +45,7 @@ operator.use("*", async (c, next) => {
   try {
     c.set("auth", await requireOperator(c.req.header("authorization")));
   } catch (e) {
-    if (e instanceof ServiceError) return c.json({ error: e.message, code: e.code }, e.status as 401, WWW_AUTH);
+    if (e instanceof ServiceError) return c.json({ error: e.message, code: e.code }, e.status as 401, wwwAuthenticate());
     throw e;
   }
   await next();

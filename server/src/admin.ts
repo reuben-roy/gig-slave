@@ -9,6 +9,7 @@ import {
 } from "./jobs.js";
 import { isTerminal, killSession } from "./lifecycle.js";
 import { runFeed } from "./stream.js";
+import { oauthAdmin, pruneOauth } from "./oauth.js";
 import { operatorAdmin } from "./operators.js";
 import { maybeSweep, sweep } from "./sweeper.js";
 
@@ -32,6 +33,7 @@ admin.use("*", async (c, next) => {
 });
 
 admin.route("/", operatorAdmin);
+admin.route("/", oauthAdmin);
 
 admin.get("/config", (c) =>
   c.json({
@@ -45,6 +47,7 @@ admin.get("/config", (c) =>
 
 admin.get("/cron/sweep", async (c) => {
   await sweep();
+  await pruneOauth();
   return c.json({ ok: true });
 });
 

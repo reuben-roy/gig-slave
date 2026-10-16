@@ -20,7 +20,11 @@ export interface Operator extends Owner {
   created_at: number;
   revoked_at: number | null;
 }
-export interface TokenInfo { id: string; prefix: string; scopes: Scope[]; expires_at: number | null }
+export interface TokenInfo {
+  id: string; prefix: string; scopes: Scope[]; expires_at: number | null;
+  /** "machine" (CLI/enrollment) or "oauth" (a linked connector such as ChatGPT or Claude). */
+  kind: "machine" | "oauth"; client_id: string | null;
+}
 export interface OperatorAuth { operator: Operator; token: TokenInfo }
 
 const DEFAULTS = { max_active_jobs: 3, max_jobs_per_day: 20, max_ttl_hours: 72 };
@@ -41,11 +45,11 @@ const toOperator = (r: any): Operator => ({
   created_at: Number(r.created_at), revoked_at: r.revoked_at == null ? null : Number(r.revoked_at),
 });
 
-const parseScopes = (raw: string) => raw.split(" ").filter((s): s is Scope => (SCOPES as readonly string[]).includes(s));
+export const parseScopes = (raw: string) => raw.split(" ").filter((s): s is Scope => (SCOPES as readonly string[]).includes(s));
 
 const bad = (message: string) => new ServiceError(400, "invalid_request", message);
 
-function scopesFrom(v: unknown, fallback: Scope[]): Scope[] {
+export function scopesFrom(v: unknown, fallback: Scope[]): Scope[] {
   if (v === undefined || v === null) return fallback;
   if (!Array.isArray(v) || !v.length || v.some((s) => !(SCOPES as readonly string[]).includes(s))) {
     throw bad(`scopes must be a non-empty subset of: ${SCOPES.join(", ")}`);
@@ -79,7 +83,7 @@ export async function authenticateOperator(header: string | undefined): Promise<
   if (!token?.startsWith("hgo_")) return null;
   const now = Date.now();
   const r = await one(
-    `SELECT t.id AS token_id, t.prefix, t.scopes, t.expires_at AS token_expires_at, t.last_used_at, o.*
+    `SELECT t.id AS token_id, t.prefix, t.scopes, t.kind, t.client_id, t.expires_at AS token_expires_at, t.last_used_at, o.*
      FROM operator_tokens t JOIN operators o ON o.id = t.operator_id
      WHERE t.token_hash = $1 AND t.revoked_at IS NULL AND o.status = 'active'`,
     [sha256(token)],
@@ -94,17 +98,31 @@ export async function authenticateOperator(header: string | undefined): Promise<
     token: {
       id: r.token_id, prefix: r.prefix, scopes: parseScopes(r.scopes),
       expires_at: r.token_expires_at == null ? null : Number(r.token_expires_at),
+      kind: r.kind, client_id: r.client_id ?? null,
     },
   };
 }
 
-async function mintToken(operatorId: string, scopes: Scope[], ttlDays: number | null) {
+interface MintOptions {
+  ttlMs: number | null;
+  /** OAuth grants: kind "oauth" plus the client, the grant family (for replay revocation) and a rotating refresh token. */
+  oauth?: { clientId: string; grantId: string; refreshToken: string; refreshTtlMs: number };
+}
+
+export async function mintToken(operatorId: string, scopes: Scope[], opts: MintOptions) {
   const token = newOperatorToken();
   const now = Date.now();
+  const o = opts.oauth;
   await run(
-    `INSERT INTO operator_tokens (id, operator_id, token_hash, prefix, scopes, created_at, expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-    [newId(), operatorId, sha256(token), token.slice(0, 12), scopes.join(" "), now, ttlDays ? now + ttlDays * 86_400_000 : null],
+    `INSERT INTO operator_tokens (id, operator_id, token_hash, prefix, scopes, created_at, expires_at,
+       kind, client_id, grant_id, refresh_hash, refresh_expires_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+    [
+      newId(), operatorId, sha256(token), token.slice(0, 12), scopes.join(" "), now,
+      opts.ttlMs ? now + opts.ttlMs : null,
+      o ? "oauth" : "machine", o?.clientId ?? null, o?.grantId ?? null,
+      o ? sha256(o.refreshToken) : null, o ? now + o.refreshTtlMs : null,
+    ],
   );
   return token;
 }
@@ -158,26 +176,31 @@ async function pendingByCode(raw: string) {
   return r;
 }
 
-/** A human approves: creates the operator account. The agent collects its token with the device secret. */
-export async function approveEnrollment(userCode: string, b: Record<string, unknown>) {
-  const e = await pendingByCode(userCode);
-  const scopes = scopesFrom(b.scopes, parseScopes(e.scopes)).filter((s) => parseScopes(e.scopes).includes(s));
-  if (!scopes.length) throw bad("granted scopes must be within the requested scopes");
+/** Create an operator account from limits in `b` (defaults applied, everything validated). */
+export async function createOperator(name: string, b: Record<string, unknown>) {
   const limits = {
     max_active_jobs: intIn(b.max_active_jobs, "max_active_jobs", 1, 20, DEFAULTS.max_active_jobs),
     max_jobs_per_day: intIn(b.max_jobs_per_day, "max_jobs_per_day", 1, 200, DEFAULTS.max_jobs_per_day),
     max_ttl_hours: intIn(b.max_ttl_hours, "max_ttl_hours", 1, 720, DEFAULTS.max_ttl_hours),
   };
   const models = modelsFrom(b.allowed_models);
-  const ttlDays = intIn(b.token_ttl_days, "token_ttl_days", 1, 365, DEFAULT_TOKEN_DAYS);
-  const name = str(b.name).slice(0, 80) || e.name;
-
   const id = newId();
   await run(
     `INSERT INTO operators (id, name, status, max_active_jobs, max_jobs_per_day, max_ttl_hours, allowed_models, created_at)
      VALUES ($1, $2, 'active', $3, $4, $5, $6, $7)`,
     [id, name, limits.max_active_jobs, limits.max_jobs_per_day, limits.max_ttl_hours, models && JSON.stringify(models), Date.now()],
   );
+  return { id, name, models, ...limits };
+}
+
+/** A human approves: creates the operator account. The agent collects its token with the device secret. */
+export async function approveEnrollment(userCode: string, b: Record<string, unknown>) {
+  const e = await pendingByCode(userCode);
+  const scopes = scopesFrom(b.scopes, parseScopes(e.scopes)).filter((s) => parseScopes(e.scopes).includes(s));
+  if (!scopes.length) throw bad("granted scopes must be within the requested scopes");
+  const ttlDays = intIn(b.token_ttl_days, "token_ttl_days", 1, 365, DEFAULT_TOKEN_DAYS);
+  const created = await createOperator(str(b.name).slice(0, 80) || e.name, b);
+  const { id, name, models, ...limits } = created;
   const claimed = await run(
     `UPDATE enrollments SET status = 'approved', operator_id = $2, scopes = $3, token_ttl_days = $4
      WHERE id = $1 AND status = 'pending' AND expires_at > $5`,
@@ -212,7 +235,7 @@ export async function collectEnrollment(deviceSecret: unknown) {
   const claimed = await run("UPDATE enrollments SET status = 'collected' WHERE id = $1 AND status = 'approved'", [e.id]);
   if (!claimed) throw new ServiceError(410, "already_collected", "the token for this enrollment was already collected");
   const scopes = parseScopes(e.scopes);
-  const token = await mintToken(e.operator_id, scopes, Number(e.token_ttl_days) || null);
+  const token = await mintToken(e.operator_id, scopes, { ttlMs: Number(e.token_ttl_days) * 86_400_000 || null });
   const operator = toOperator((await one("SELECT * FROM operators WHERE id = $1", [e.operator_id]))!);
   return { status: "approved" as const, token, scopes, operator: operatorJson(operator) };
 }
@@ -236,7 +259,8 @@ export async function listOperators() {
       ...operatorJson(o),
       usage: await usageOf(o.id),
       tokens: tokens.filter((t) => t.operator_id === o.id).map((t) => ({
-        id: t.id, prefix: t.prefix, scopes: parseScopes(t.scopes), created_at: Number(t.created_at),
+        id: t.id, prefix: t.prefix, kind: t.kind, client_id: t.client_id ?? null,
+        scopes: parseScopes(t.scopes), created_at: Number(t.created_at),
         expires_at: t.expires_at == null ? null : Number(t.expires_at),
         last_used_at: t.last_used_at == null ? null : Number(t.last_used_at),
         revoked_at: t.revoked_at == null ? null : Number(t.revoked_at),
@@ -245,7 +269,7 @@ export async function listOperators() {
   );
 }
 
-async function operatorById(id: string) {
+export async function operatorById(id: string) {
   const r = await one("SELECT * FROM operators WHERE id = $1", [id]);
   if (!r) throw new ServiceError(404, "not_found", "operator not found");
   return toOperator(r);
