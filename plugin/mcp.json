@@ -1,0 +1,24 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "hired-gun": {
+      "type": "streamable-http",
+      "url": "https://gigagent-beta.vercel.app/mcp",
+      "extensions": {
+        "com.openai": {
+          "auth": {
+            "type": "oauth",
+            "client": {
+              "mode": "dcr"
+            },
+            "resource": "https://gigagent-beta.vercel.app/mcp",
+            "baseScopes": [
+              "jobs:read",
+              "jobs:write"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

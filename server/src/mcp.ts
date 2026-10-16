@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { actions, actionByName, runAction } from "./actions.js";
 import { ServiceError } from "./jobs.js";
-import { requireOperator, wwwAuthenticate } from "./operator.js";
+import { requireOperator, wwwAuthenticate, oauthChallenge } from "./operator.js";
 import type { OperatorAuth } from "./operators.js";
 
 /**
@@ -45,6 +45,7 @@ async function handle(msg: Rpc, auth: OperatorAuth) {
             title: a.title,
             description: a.description,
             inputSchema: a.inputSchema,
+            securitySchemes: [{ type: "oauth2", scopes: [a.scope] }],
             annotations: {
               readOnlyHint: Boolean(a.hints.readOnly),
               destructiveHint: Boolean(a.hints.destructive),
@@ -62,7 +63,9 @@ async function handle(msg: Rpc, auth: OperatorAuth) {
       } catch (e) {
         if (!(e instanceof ServiceError)) throw e;
         const err = { error: e.message, code: e.code };
-        return ok({ content: [{ type: "text", text: JSON.stringify(err) }], structuredContent: err, isError: true });
+        return ok({ content: [{ type: "text", text: JSON.stringify(err) }], structuredContent: err, isError: true,
+          ...(e.code === "insufficient_scope" ? { _meta: { "mcp/www_authenticate": [oauthChallenge("insufficient_scope", actionByName.get(name)!.scope)] } } : {}),
+        });
       }
     }
     default:
@@ -71,16 +74,23 @@ async function handle(msg: Rpc, auth: OperatorAuth) {
 }
 
 mcp.post("/", async (c) => {
+  const body = await c.req.json().catch(() => undefined);
   let auth: OperatorAuth;
   try {
     auth = await requireOperator(c.req.header("authorization"));
   } catch (e) {
     if (e instanceof ServiceError) {
+      // Tool-level challenges let ChatGPT offer account linking without running an action.
+      if (body?.jsonrpc === "2.0" && body.method === "tools/call" && body.id !== undefined && !Array.isArray(body)) {
+        return c.json({ jsonrpc: "2.0", id: body.id, result: {
+          content: [{ type: "text", text: "Connect your Hired Gun account to use this tool." }],
+          isError: true, _meta: { "mcp/www_authenticate": [oauthChallenge()] },
+        } });
+      }
       return c.json({ error: e.message, code: e.code }, 401, wwwAuthenticate());
     }
     throw e;
   }
-  const body = await c.req.json().catch(() => undefined);
   if (body === undefined) return c.json(rpcError(null, -32700, "parse error"), 400);
   if (Array.isArray(body)) {
     if (body.length > 20) return c.json(rpcError(null, -32600, "batch too large (max 20)"), 400);

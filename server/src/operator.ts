@@ -29,9 +29,12 @@ operator.post("/enroll/token", async (c) => {
 });
 
 /** Tells OAuth-capable clients (Claude, ChatGPT) where to start the authorization flow. */
-export const wwwAuthenticate = () => ({
-  "WWW-Authenticate": `Bearer realm="hired-gun", resource_metadata="${config.publicUrl}/.well-known/oauth-protected-resource"`,
-});
+export function oauthChallenge(error: "invalid_token" | "insufficient_scope" = "invalid_token", scope?: string) {
+  const description = error === "insufficient_scope" ? "Approve the required permission to use this tool." : "Connect your Hired Gun account to continue.";
+  return `Bearer realm="hired-gun", resource_metadata=${JSON.stringify(`${config.publicUrl}/.well-known/oauth-protected-resource`)}, error="${error}", error_description=${JSON.stringify(description)}` +
+    (scope ? `, scope=${JSON.stringify(scope)}` : "");
+}
+export const wwwAuthenticate = () => ({ "WWW-Authenticate": oauthChallenge() });
 
 /** Shared by the REST routes and the MCP endpoint. */
 export async function requireOperator(header: string | undefined) {

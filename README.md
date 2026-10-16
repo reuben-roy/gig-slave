@@ -27,7 +27,7 @@ The model API keys never reach the Mac. The CLI gets a per-session token and tal
 | `server/public/assets/` | shared brand tokens (`brand.css`), logo, self-hosted fonts (SIL OFL) |
 | `cli/` | the `gigagent` npm package (the recipient's command) |
 | `operator/` | the `hired-gun` CLI for agents (zero dependencies, no build) |
-| `plugin/`, `.claude-plugin/` | Claude Code plugin (MCP server + skill) and its marketplace entry |
+| `plugin/`, `.claude-plugin/` | Portable ChatGPT and Claude Code plugin (MCP server + shared skill) and its marketplace entry |
 | `mock/` | scripted OpenAI-compatible upstream for offline tests |
 | `e2e/run.mjs` | end-to-end test |
 | `worker/`, `scripts/tunnel.mjs` | self-hosting option only: stable Cloudflare Worker address for a tunnel |
@@ -141,7 +141,7 @@ node operator/bin.mjs jobs watch <job id>        # JSON lines until the job ends
 
 `jobs list|get|events|instruct|stop|code` cover the rest; `HIRED_GUN_TOKEN` / `HIRED_GUN_SERVER` override the saved sign-in. Review, limit and revoke accounts at `/connect`.
 
-Claude: `claude plugin marketplace add <this repo>` then `claude plugin install hired-gun@hired-gun`, then `/mcp` to authenticate (you approve on `/connect`). Headless: `claude mcp add --transport http hired-gun <server>/mcp --header "Authorization: Bearer $HIRED_GUN_TOKEN"`. ChatGPT and other OAuth connectors use `<server>/mcp` with the discovery documents under `/.well-known/`. API details: CONTRACT.md.
+Claude: `claude plugin marketplace add <this repo>` then `claude plugin install hired-gun@hired-gun`, then `/mcp` to authenticate (you approve on `/connect`). Headless: `claude mcp add --transport http hired-gun <server>/mcp --header "Authorization: Bearer $HIRED_GUN_TOKEN"`. ChatGPT and other OAuth connectors use `<server>/mcp` with the discovery documents under `/.well-known/`. API details: CONTRACT.md. ChatGPT connection and acceptance checks: [plugin/README.md](plugin/README.md).
 
 ## Real-key demo on a Mac
 

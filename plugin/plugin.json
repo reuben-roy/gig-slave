@@ -1,0 +1,32 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "hired-gun",
+  "version": "0.1.0",
+  "description": "Create, watch, instruct and stop temporary agents on a Mac, and read their structured results.",
+  "author": {
+    "name": "reuben-roy"
+  },
+  "homepage": "https://gigagent-beta.vercel.app",
+  "repository": "https://github.com/reuben-roy/gig-slave",
+  "license": "MIT",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Hired Gun",
+        "shortDescription": "Temporary agents, one task at a time",
+        "longDescription": "Launch a permitted task on a Mac with a one-time recipient command. Watch progress, send instructions, stop the job, and read its result. Account access requires owner approval.",
+        "developerName": "reuben-roy",
+        "category": "Productivity",
+        "capabilities": [
+          "Read",
+          "Write"
+        ],
+        "websiteURL": "https://gigagent-beta.vercel.app",
+        "defaultPrompt": [
+          "Show my Hired Gun jobs.",
+          "Create a Hired Gun task for my Mac."
+        ]
+      }
+    }
+  }
+}

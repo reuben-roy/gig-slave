@@ -357,6 +357,8 @@ describe("MCP", () => {
     const tools = (await rpc(op.token, { jsonrpc: "2.0", id: 2, method: "tools/list" })).body.result.tools;
     assert.deepEqual(tools.map((t) => t.name).sort(), ["create_job", "get_account", "get_job", "get_job_events", "list_jobs", "reissue_code", "send_instruction", "stop_job"]);
     assert.ok(tools.every((t) => t.inputSchema.type === "object" && t.description && t.annotations));
+    assert.deepEqual(tools.find((t) => t.name === "create_job").securitySchemes, [{ type: "oauth2", scopes: ["jobs:write"] }]);
+    assert.deepEqual(tools.find((t) => t.name === "get_account").securitySchemes, [{ type: "oauth2", scopes: ["jobs:read"] }]);
     assert.equal(tools.find((t) => t.name === "stop_job").annotations.destructiveHint, true);
     assert.equal(tools.find((t) => t.name === "get_job").annotations.readOnlyHint, true);
 
@@ -371,6 +373,7 @@ describe("MCP", () => {
     const missing = (await rpc(op.token, { jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "get_job", arguments: { job_id: "nope" } } })).body.result;
     assert.equal(missing.isError, true);
     assert.equal(missing.structuredContent.code, "not_found");
+    assert.equal(missing._meta, undefined);
     assert.equal((await rpc(op.token, { jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "drop_tables", arguments: {} } })).body.error.code, -32602);
     assert.equal((await rpc(op.token, { jsonrpc: "2.0", id: 7, method: "bogus" })).body.error.code, -32601);
 
@@ -385,6 +388,18 @@ describe("MCP", () => {
     const r = (await rpc(ro.token, { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "create_job", arguments: job() } })).body.result;
     assert.equal(r.isError, true);
     assert.equal(r.structuredContent.code, "insufficient_scope");
+    assert.match(r._meta["mcp/www_authenticate"][0], /error="insufficient_scope".*scope="jobs:write"/);
+  });
+
+  it("returns a linking challenge for an expired or absent tool credential, never running the action", async () => {
+    for (const token of [undefined, "hgo_invalid"]) {
+      const r = await rpc(token, { jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "create_job", arguments: job() } });
+      assert.equal(r.status, 200);
+      assert.equal(r.body.id, 7);
+      assert.equal(r.body.result.isError, true);
+      assert.match(r.body.result._meta["mcp/www_authenticate"][0], /resource_metadata=.*error="invalid_token"/);
+      assert.equal(r.body.result.structuredContent, undefined);
+    }
   });
 });
 

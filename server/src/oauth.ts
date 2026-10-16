@@ -52,6 +52,11 @@ const publicScopes = (raw: unknown): Scope[] => {
 export const wellKnown = new Hono();
 
 const base = () => config.publicUrl;
+// This authorization server issues tokens for one resource only; legacy clients may omit it.
+const resource = () => `${base()}/mcp`;
+function validateResource(raw: unknown) {
+  if (raw !== undefined && raw !== resource()) throw oauthError(400, "invalid_target", "resource must be the Hired Gun MCP endpoint");
+}
 wellKnown.get("/oauth-protected-resource", (c) =>
   c.json({
     resource: `${base()}/mcp`,
@@ -129,9 +134,10 @@ oauth.get("/authorize", async (c) => {
   };
   if (q.response_type !== "code") return back("unsupported_response_type");
   if (!q.code_challenge || q.code_challenge_method !== "S256") return back("invalid_request");
+  if (q.resource !== undefined && q.resource !== resource()) return back("invalid_target");
   const params = new URLSearchParams({
     response_type: "code", client_id: q.client_id, redirect_uri: q.redirect_uri,
-    code_challenge: q.code_challenge, code_challenge_method: "S256", scope: publicScopes(q.scope).join(" "),
+    code_challenge: q.code_challenge, code_challenge_method: "S256", scope: publicScopes(q.scope).join(" "), resource: resource(),
   });
   if (q.state) params.set("state", q.state);
   return c.redirect(`/connect?${params}`, 302);
@@ -151,7 +157,7 @@ async function issue(operatorId: string, scopes: Scope[], clientId: string, gran
   });
   return {
     access_token: accessToken, token_type: "Bearer", expires_in: ACCESS_TTL_MS / 1000,
-    refresh_token: refreshToken, scope: scopes.join(" "),
+    refresh_token: refreshToken, scope: scopes.join(" "), resource: resource(),
   };
 }
 
@@ -162,6 +168,7 @@ oauth.post("/token", async (c) => {
   await ensureSchema();
   const b = await tokenBody(c);
   c.header("Cache-Control", "no-store");
+  validateResource(b.resource);
   const client = await clientById(b.client_id);
   if (!client) throw oauthError(401, "invalid_client", "unknown client_id");
 
@@ -235,6 +242,7 @@ oauthAdmin.post("/oauth/authorize", async (c) => {
   const b = ((await c.req.json().catch(() => null)) ?? {}) as Record<string, any>;
   const client = await clientById(b.client_id);
   if (!client || !client.redirect_uris.includes(b.redirect_uri)) throw oauthError(400, "invalid_request", "unknown client_id or unregistered redirect_uri");
+  validateResource(b.resource);
   const redirect = new URL(b.redirect_uri);
   if (typeof b.state === "string" && b.state) redirect.searchParams.set("state", b.state);
 

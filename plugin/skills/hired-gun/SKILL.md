@@ -9,7 +9,7 @@ Hired Gun runs a helper agent on a Mac after the person at that computer types a
 
 ## Connect (once)
 
-If the tools are missing or return an authorization error, run `/mcp`, select `hired-gun` and authenticate. A browser page opens where the service owner approves this connection and chooses which account and permissions it gets. Do not try to approve it yourself or ask for the owner's admin token.
+If tools are missing or return an authorization error, connect Hired Gun through your host’s plugin authentication UI (in Claude Code: `/mcp` → `hired-gun`; in ChatGPT: connect the Hired Gun plugin). A browser page opens where the service owner approves this connection and chooses which account and permissions it gets. Do not try to approve it yourself or ask for the owner's admin token.
 
 Headless agents can use an operator token instead: `claude mcp add --transport http hired-gun <server>/mcp --header "Authorization: Bearer $HIRED_GUN_TOKEN"`. Get the token with `hired-gun login` (the owner approves the request), never by asking for it.
 

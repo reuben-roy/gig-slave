@@ -269,3 +269,28 @@ describe("tokens", () => {
     assert.equal((await call("POST", "/oauth/token", { form: { grant_type: "authorization_code", client_id: "hgc_nope" } })).status, 401);
   });
 });
+
+describe("ChatGPT OAuth resource binding", () => {
+  const resource = "https://hired.example/mcp";
+  it("preserves the sole audience through consent, exchange and refresh; rejects other targets before consuming grants", async () => {
+    const client = await register();
+    const c = await consent(client, { resource });
+    const query = new URLSearchParams({ response_type: "code", client_id: client, redirect_uri: REDIRECT, code_challenge: c.challenge, code_challenge_method: "S256", resource });
+    const location = (await call("GET", "/oauth/authorize?" + query)).headers.get("location");
+    assert.equal(new URL(location, "https://hired.example").searchParams.get("resource"), resource);
+    query.set("resource", "https://other.example/mcp");
+    const rejected = await call("GET", "/oauth/authorize?" + query);
+    assert.equal(new URL(rejected.headers.get("location")).searchParams.get("error"), "invalid_target");
+    const badConsent = await call("POST", "/api/oauth/authorize", { token: s.token, body: { approve: true, client_id: client, redirect_uri: REDIRECT, resource: "https://other.example/mcp" } });
+    assert.equal(badConsent.body.code, "invalid_target");
+    const form = { grant_type: "authorization_code", client_id: client, code: c.code, code_verifier: c.verifier, redirect_uri: REDIRECT, resource };
+    const bad = await call("POST", "/oauth/token", { form: { ...form, resource: "https://other.example/mcp" } });
+    assert.equal(bad.body.error, "invalid_target");
+    const issued = await call("POST", "/oauth/token", { form });
+    assert.equal(issued.status, 200);
+    assert.equal(issued.body.resource, resource);
+    const refresh = { grant_type: "refresh_token", client_id: client, refresh_token: issued.body.refresh_token, resource };
+    assert.equal((await call("POST", "/oauth/token", { form: { ...refresh, resource: "https://other.example/mcp" } })).body.error, "invalid_target");
+    assert.equal((await call("POST", "/oauth/token", { form: refresh })).body.resource, resource);
+  });
+});

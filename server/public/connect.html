@@ -165,7 +165,7 @@
   }
 
   async function decide(approve) {
-    const body = { approve, client_id: oauth.client_id, redirect_uri: oauth.redirect_uri, state: oauth.state, code_challenge: oauth.code_challenge, code_challenge_method: oauth.code_challenge_method };
+    const body = { approve, client_id: oauth.client_id, redirect_uri: oauth.redirect_uri, state: oauth.state, resource: oauth.resource, code_challenge: oauth.code_challenge, code_challenge_method: oauth.code_challenge_method };
     if (approve) {
       body.scopes = grantedScopes();
       if ($('link').value) body.operator_id = $('link').value;
