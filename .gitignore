@@ -6,3 +6,5 @@ dist/
 !cli/dist/
 e2e/.tmp/
 .DS_Store
+.vercel
+.env*

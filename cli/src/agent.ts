@@ -2,10 +2,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { Model } from "@mariozechner/pi-ai";
+import { Type } from "typebox";
+import type { Result } from "./api.js";
 import {
   AuthStorage,
   createAgentSession,
   createExtensionRuntime,
+  defineTool,
   ModelRegistry,
   SessionManager,
   SettingsManager,
@@ -14,22 +17,29 @@ import {
   type ResourceLoader,
 } from "@mariozechner/pi-coding-agent";
 
-export const SYSTEM_PROMPT = `You are a careful helper working on someone's Mac. You are operated remotely, on behalf of a person they trust, to complete one task. The person at the computer is not technical and cannot answer questions, so do not ask any. Make sensible decisions and carry on.
+export const SYSTEM_PROMPT = `You are a careful helper working on someone's Mac. You were sent by a trusted person (the operator), who is not at this computer and will receive your report. The person sitting at the computer is not technical and cannot answer questions, so do not ask any. Make sensible decisions and carry on.
 
-You have four tools: read (read a file), write (create a file), edit (change part of a file) and bash (run a shell command). Your working folder is the current working directory.
+You have five tools: read (read a file), write (create a file), edit (change part of a file), bash (run a shell command) and submit_report (hand in your final report). Your working folder is the current working directory.
 
 Rules you must always follow:
-- Stay inside the working folder. Never read, change or move anything outside it.
+- Any change you make must stay inside the working folder. Never create, change, move or delete anything outside it.
 - Never delete anything. Do not use rm, do not empty the Trash, and never overwrite an existing file. If something has to go, move it into a folder inside the working folder instead. If a destination file already exists, pick a different name (for example add " 2").
-- Keep a record of every move. The file ".gig-slave-undo.json" in the working folder must be a JSON array of objects like {"from": "old/relative/path", "to": "new/relative/path"}, using paths relative to the working folder. Create it if it does not exist, add to it after you move files, and keep it valid JSON and up to date. Do not list the undo file itself.
+- Keep a record of every move. The file ".gigagent-undo.json" in the working folder must be a JSON array of objects like {"from": "old/relative/path", "to": "new/relative/path"}, using paths relative to the working folder. Create it if it does not exist, add to it after you move files, and keep it valid JSON and up to date. Do not list the undo file itself.
 - No sudo, no installing software, no network access, no downloading or uploading anything.
 - Be efficient. Look around once, make a plan, then do the work in as few bash commands as you reasonably can (batch many moves into one command, using mv -n so nothing is ever overwritten). Do not read the contents of files unless you need to.
 - Leave hidden files, system files and folders you do not understand alone, unless the task says otherwise.
 - Do not narrate every step. Keep text between tool calls to a minimum.
 
+If the task asks for information (for example about this computer or about files in the working folder), find it and put the full answer in the "answer" field of your report: clear, complete, and Markdown is fine. Put the key facts in "findings" as short label/value pairs (for example label "macOS version", value "15.3"). To look up information about the computer you MAY run read-only commands even outside the working folder when the task needs it (for example sw_vers, df -h, system_profiler SPHardwareDataType, fdesetup status, uname -a, ls /Applications). Read-only means they must not change anything. Never change anything outside the working folder.
+
 If the operator sends you an extra instruction while you work, follow it too, under the same rules.
 
-When you are completely finished, reply with a short plain-English report for the person at the computer: what you did and what changed, in a few sentences, with no technical jargon and no code. Mention that the changes can be undone using the ".gig-slave-undo.json" file. That final reply is the report, so do not end on a tool call.`;
+When you are completely finished, call submit_report exactly once, as your very last action, and then stop. Its fields:
+- success: true if you did what was asked, false if you could not.
+- summary: a few plain-English sentences for the non-technical person at the computer: what you did and what changed, with no jargon and no code. If you moved anything, mention that it can be undone using the ".gigagent-undo.json" file in the working folder.
+- answer: (optional) the information the task asked for, for the operator.
+- findings: (optional) key facts as {label, value} pairs.
+- changes: (optional) one short line per change you made, for example "Moved 23 screenshots into Screenshots/". Leave it out or empty if you changed nothing.`;
 
 export type EventSink = (type: "status" | "tool_call" | "tool_result" | "assistant" | "error", data: Record<string, unknown>) => void;
 
@@ -45,8 +55,31 @@ export interface AgentOptions {
 
 export interface RunResult {
   success: boolean;
+  /** Same as result.summary. */
   report: string;
+  result: Result;
 }
+
+function failure(reason: string): RunResult {
+  return { success: false, report: reason, result: { success: false, summary: reason, answer: null, findings: [], changes: [] } };
+}
+
+const str = (v: unknown): string => (typeof v === "string" ? v : v == null ? "" : String(v));
+
+/** Normalise whatever the model passed to submit_report into a Result. */
+function toResult(p: any): Result {
+  const findings = Array.isArray(p?.findings)
+    ? p.findings
+        .filter((f: any) => f && (f.label != null || f.value != null))
+        .map((f: any) => ({ label: str(f.label), value: str(f.value) }))
+    : [];
+  const changes = Array.isArray(p?.changes) ? p.changes.map(str).filter((c: string) => c.trim()) : [];
+  const answer = typeof p?.answer === "string" && p.answer.trim() ? p.answer : null;
+  const summary = str(p?.summary).trim() || (p?.success === false ? "The task could not be completed." : "The task is finished.");
+  return { success: p?.success !== false, summary, answer, findings, changes };
+}
+
+const SUBMIT_REPORT_TOOL = "submit_report";
 
 function clip(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1) + "…" : s;
@@ -86,6 +119,8 @@ export function describeTool(tool: string, args: any): string {
       return clip(`Reading ${file}`, 60);
     case "edit":
       return clip(`Editing ${file}`, 60);
+    case SUBMIT_REPORT_TOOL:
+      return "Writing up the report";
     default:
       return clip(`Using ${tool}`, 60);
   }
@@ -103,6 +138,7 @@ export class Agent {
   private aborted = false;
   private unsubscribe: (() => void) | null = null;
   private idleWaiters: (() => void)[] = [];
+  private submitted: Result | null = null;
 
   constructor(private opts: AgentOptions) {}
 
@@ -110,7 +146,7 @@ export class Agent {
     const { cwd, agentDir, model: modelId, baseUrl, token } = this.opts;
 
     const authStorage = AuthStorage.create(path.join(agentDir, "auth.json"));
-    authStorage.setRuntimeApiKey("gig-slave", token);
+    authStorage.setRuntimeApiKey("gigagent", token);
     const modelRegistry = ModelRegistry.inMemory(authStorage);
     const settingsManager = SettingsManager.inMemory({
       compaction: { enabled: false },
@@ -121,7 +157,7 @@ export class Agent {
       id: modelId,
       name: modelId,
       api: "openai-completions",
-      provider: "gig-slave",
+      provider: "gigagent",
       baseUrl,
       reasoning: false,
       input: ["text"],
@@ -135,6 +171,38 @@ export class Agent {
         maxTokensField: "max_tokens",
       },
     };
+
+    const submitReport = defineTool({
+      name: SUBMIT_REPORT_TOOL,
+      label: "Submit report",
+      description:
+        "Hand in your final report. Call this exactly once, as your very last action, when the task is finished (or cannot be finished).",
+      parameters: Type.Object({
+        success: Type.Boolean({ description: "true if you did what was asked, false if you could not" }),
+        summary: Type.String({
+          description: "A few plain-English sentences for the non-technical person at the computer. Mention the undo file if you moved anything.",
+        }),
+        answer: Type.Optional(
+          Type.String({ description: "The information the task asked for, for the operator. Clear and complete; Markdown is fine." }),
+        ),
+        findings: Type.Optional(
+          Type.Array(Type.Object({ label: Type.String(), value: Type.String() }), {
+            description: "Key facts as label/value pairs, e.g. {label: 'macOS version', value: '15.3'}",
+          }),
+        ),
+        changes: Type.Optional(
+          Type.Array(Type.String(), { description: "One short line per change made, e.g. 'Moved 23 screenshots into Screenshots/'" }),
+        ),
+      }),
+      execute: async (_id, params) => {
+        this.submitted = toResult(params);
+        return {
+          content: [{ type: "text", text: "Report received. You are finished; stop now." }],
+          details: undefined,
+          terminate: true,
+        };
+      },
+    });
 
     const resourceLoader: ResourceLoader = {
       getExtensions: () => ({ extensions: [], errors: [], runtime: createExtensionRuntime() }),
@@ -156,7 +224,8 @@ export class Agent {
       authStorage,
       modelRegistry,
       resourceLoader,
-      tools: ["read", "write", "edit", "bash"],
+      tools: ["read", "write", "edit", "bash", SUBMIT_REPORT_TOOL],
+      customTools: [submitReport],
       sessionManager: SessionManager.inMemory(cwd),
       settingsManager,
     });
@@ -252,7 +321,7 @@ export class Agent {
       while (this.active > 0 && !this.disposed) {
         await new Promise<void>((r) => this.idleWaiters.push(r));
       }
-      if (this.disposed) return { success: false, report: "Stopped." };
+      if (this.disposed) return failure("Stopped.");
       // A follow-up that arrived just as the run ended may still be queued.
       if (!this.aborted && this.session.pendingMessageCount > 0 && !this.session.isStreaming) {
         const { steering, followUp } = this.session.clearQueue();
@@ -265,18 +334,19 @@ export class Agent {
   }
 
   private result(): RunResult {
+    if (this.submitted) {
+      return { success: this.submitted.success, report: this.submitted.summary, result: this.submitted };
+    }
     const msgs = this.session.messages as any[];
     const last = [...msgs].reverse().find((m) => m.role === "assistant");
-    if (this.firstError && !last) {
-      return { success: false, report: `The helper could not complete the task: ${this.firstError}` };
-    }
-    if (!last) return { success: false, report: "The helper did not produce any answer." };
+    if (this.firstError && !last) return failure(`The helper could not complete the task: ${this.firstError}`);
+    if (!last) return failure("The helper did not produce any answer.");
     if (last.stopReason === "error" || last.stopReason === "aborted") {
       const why = last.errorMessage ?? (last.stopReason === "aborted" ? "the run was stopped" : "an unknown error");
-      return { success: false, report: `The helper could not complete the task: ${why}` };
+      return failure(`The helper could not complete the task: ${why}`);
     }
-    const text = textOf(last.content).trim();
-    return { success: true, report: text || "The task finished, but no written report was produced." };
+    const text = textOf(last.content).trim() || "The task finished, but no written report was produced.";
+    return { success: true, report: text, result: { success: true, summary: text, answer: null, findings: [], changes: [] } };
   }
 
   async abort(): Promise<void> {

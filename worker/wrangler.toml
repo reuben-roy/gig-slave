@@ -1,3 +1,6 @@
+# Self-hosting option only (see README). The name stays "gig-slave" on purpose: it fixes the
+# workers.dev address (gig-slave.reubenroyk.workers.dev) that the CLI currently has baked in.
+# Renaming it would change that URL and break published CLIs.
 name = "gig-slave"
 main = "src/index.js"
 compatibility_date = "2025-01-01"
