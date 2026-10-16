@@ -133,7 +133,7 @@ async function create(flags) {
     label: need(flags.label, "--label"), task: need(flags.task, "--task"),
     working_dir: flags.dir, model: flags.model, expiry_policy: flags.policy,
     ttl_hours: flags["ttl-hours"] ? Number(flags["ttl-hours"]) : undefined,
-    notify_webhook: flags.webhook, notify_email: flags.email,
+    notify_webhook: flags.webhook,
   };
   out(await call(flags, "POST", "/operator/jobs", body, key ? { "idempotency-key": key } : undefined));
 }
@@ -162,7 +162,7 @@ const USAGE = `hired-gun <command>
   logout                                                                       revoke this token and forget it
   whoami                                                                       account, limits, usage, models
   jobs create --label L --task T [--dir D] [--model M] [--policy one_use|on_complete|ttl] [--ttl-hours H]
-              [--webhook URL] [--email ADDR] [--key IDEMPOTENCY_KEY]           returns the code to give the recipient
+              [--webhook URL] [--key IDEMPOTENCY_KEY]           returns the code to give the recipient
   jobs list [--state S] [--limit N]
   jobs get ID [--wait SECONDS]
   jobs watch ID                                                                stream state changes until the job ends
@@ -179,7 +179,7 @@ async function main(argv) {
     options: {
       name: { type: "string" }, scopes: { type: "string" }, server: { type: "string" }, "no-wait": { type: "boolean" }, new: { type: "boolean" },
       label: { type: "string" }, task: { type: "string" }, dir: { type: "string" }, model: { type: "string" }, policy: { type: "string" },
-      "ttl-hours": { type: "string" }, webhook: { type: "string" }, email: { type: "string" }, key: { type: "string" },
+      "ttl-hours": { type: "string" }, webhook: { type: "string" }, key: { type: "string" },
       state: { type: "string" }, limit: { type: "string" }, wait: { type: "string" }, after: { type: "string" }, help: { type: "boolean", short: "h" },
     },
   });

@@ -77,7 +77,6 @@ export const actions: Action[] = [
         },
         ttl_hours: { type: "number", description: "Hours until the code and job expire. Default 24; capped by the account's max_ttl_hours." },
         notify_webhook: { type: "string", description: "Optional https URL (Slack/Discord/generic) called when the job ends." },
-        notify_email: { type: "string", description: "Optional email address told when the job ends (if the server has email configured)." },
         idempotency_key: { type: "string", description: "1-128 chars of A-Z a-z 0-9 _ . : -. Same key + same parameters returns the original job." },
       },
       ["label", "task"],

@@ -90,7 +90,9 @@ CREATE TABLE IF NOT EXISTS operators (
 CREATE TABLE IF NOT EXISTS operator_tokens (
   id TEXT PRIMARY KEY, operator_id TEXT NOT NULL REFERENCES operators(id), token_hash TEXT NOT NULL UNIQUE,
   prefix TEXT NOT NULL, scopes TEXT NOT NULL, created_at BIGINT NOT NULL,
-  expires_at BIGINT, last_used_at BIGINT, revoked_at BIGINT
+  expires_at BIGINT, last_used_at BIGINT, revoked_at BIGINT,
+  kind TEXT NOT NULL DEFAULT 'machine', -- 'oauth' for tokens issued through the authorization-code grant
+  client_id TEXT, grant_id TEXT, refresh_hash TEXT, refresh_expires_at BIGINT
 );
 CREATE INDEX IF NOT EXISTS operator_tokens_operator ON operator_tokens(operator_id);
 -- Device-style enrollment: an agent asks for access, a human with the admin token approves it.
@@ -108,16 +110,14 @@ CREATE TABLE IF NOT EXISTS oauth_codes (
   code_hash TEXT PRIMARY KEY, client_id TEXT NOT NULL, operator_id TEXT NOT NULL, scopes TEXT NOT NULL,
   redirect_uri TEXT NOT NULL, code_challenge TEXT NOT NULL, expires_at BIGINT NOT NULL, used BOOLEAN NOT NULL DEFAULT FALSE
 );
-ALTER TABLE operator_tokens ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'machine';
-ALTER TABLE operator_tokens ADD COLUMN IF NOT EXISTS client_id TEXT;
-ALTER TABLE operator_tokens ADD COLUMN IF NOT EXISTS grant_id TEXT;
-ALTER TABLE operator_tokens ADD COLUMN IF NOT EXISTS refresh_hash TEXT;
-ALTER TABLE operator_tokens ADD COLUMN IF NOT EXISTS refresh_expires_at BIGINT;
 CREATE UNIQUE INDEX IF NOT EXISTS operator_tokens_refresh ON operator_tokens(refresh_hash) WHERE refresh_hash IS NOT NULL;
 CREATE INDEX IF NOT EXISTS operator_tokens_grant ON operator_tokens(grant_id);
-ALTER TABLE invites ADD COLUMN IF NOT EXISTS operator_id TEXT;
-ALTER TABLE invites ADD COLUMN IF NOT EXISTS idem_key TEXT;
-ALTER TABLE invites ADD COLUMN IF NOT EXISTS idem_hash TEXT;
+-- Existing databases: add the operator columns once. (A guarded block, so a cold start never takes the table lock again.)
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invites' AND column_name = 'operator_id') THEN
+    ALTER TABLE invites ADD COLUMN operator_id TEXT, ADD COLUMN idem_key TEXT, ADD COLUMN idem_hash TEXT;
+  END IF;
+END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS invites_idem ON invites(operator_id, idem_key) WHERE idem_key IS NOT NULL;
 CREATE INDEX IF NOT EXISTS invites_operator ON invites(operator_id, created_at);
 `;

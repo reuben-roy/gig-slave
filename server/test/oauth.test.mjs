@@ -263,7 +263,9 @@ describe("tokens", () => {
 
   it("rejects unknown grant types and clients", async () => {
     const id = await register();
-    assert.equal((await call("POST", "/oauth/token", { form: { grant_type: "client_credentials", client_id: id } })).body.code, "unsupported_grant_type");
+    const bad = await call("POST", "/oauth/token", { form: { grant_type: "client_credentials", client_id: id } });
+    assert.equal(bad.body.error, "unsupported_grant_type");
+    assert.ok(bad.body.error_description);
     assert.equal((await call("POST", "/oauth/token", { form: { grant_type: "authorization_code", client_id: "hgc_nope" } })).status, 401);
   });
 });

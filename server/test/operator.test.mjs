@@ -256,6 +256,19 @@ describe("limits", () => {
     }
   });
 
+  it("operator jobs cannot email arbitrary addresses or call http/loopback webhooks", async () => {
+    const op = await newOperator("hooks", { max_active_jobs: 5 });
+    const email = await call("POST", "/operator/jobs", { token: op.token, body: job({ notify_email: "victim@example.com" }) });
+    assert.equal(email.status, 400);
+    const http = await call("POST", "/operator/jobs", { token: op.token, body: job({ notify_webhook: "http://127.0.0.1:9/hook" }) });
+    assert.equal(http.status, 400);
+    const ok = await call("POST", "/operator/jobs", { token: op.token, body: job({ notify_webhook: "https://hooks.example.com/x" }) });
+    assert.equal(ok.status, 201);
+    // the owner's dashboard keeps both abilities
+    const admin = await call("POST", "/api/invites", { token: s.token, body: { label: "a", task: "t", expiry_policy: "one_use", notify_webhook: "http://127.0.0.1:9/hook" } });
+    assert.equal(admin.status, 201);
+  });
+
   it("operator jobs always expire", async () => {
     const op = await newOperator("exp", { max_active_jobs: 5 });
     const j = (await call("POST", "/operator/jobs", { token: op.token, body: job() })).body.job;

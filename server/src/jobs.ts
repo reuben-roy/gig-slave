@@ -36,11 +36,11 @@ export const commandFor = (code: string) => `npx gigagent ${code}`;
 
 export const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 
-function webhookOk(raw: string) {
+function webhookOk(raw: string, allowLoopback: boolean) {
   try {
     const u = new URL(raw);
     if (u.protocol === "https:") return true;
-    return u.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname);
+    return allowLoopback && u.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname);
   } catch {
     return false;
   }
@@ -98,11 +98,13 @@ export async function createInvite(
   }
 
   const notifyEmail = str(b.notify_email) || null;
+  // Operator accounts can't make the server email arbitrary addresses (the owner's sender reputation) or call plain-http/loopback URLs.
+  if (owner && notifyEmail) throw bad("notify_email is not available to operator accounts; use notify_webhook");
   if (notifyEmail && (notifyEmail.length > 254 || !EMAIL_RE.test(notifyEmail))) {
     throw bad("notify_email must be a valid email address");
   }
   const notifyWebhook = str(b.notify_webhook) || null;
-  if (notifyWebhook && (notifyWebhook.length > 2000 || !webhookOk(notifyWebhook))) {
+  if (notifyWebhook && (notifyWebhook.length > 2000 || !webhookOk(notifyWebhook, !owner))) {
     throw bad("notify_webhook must be an https:// URL");
   }
   const workingDir = str(b.working_dir) || "~/Desktop";
@@ -225,14 +227,16 @@ export async function jobView(invite: InviteRow, sessions?: SessionRow[]) {
 }
 
 export async function listJobs(operatorId: string, opts: { state?: string; limit?: number } = {}) {
+  const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
+  // A state filter looks through the newest 200 jobs, so "running" isn't hidden behind 50 finished ones.
   const rows = (
     await all("SELECT * FROM invites WHERE operator_id = $1 ORDER BY created_at DESC, seq DESC LIMIT $2", [
-      operatorId, Math.min(Math.max(opts.limit ?? 50, 1), 200),
+      operatorId, opts.state ? 200 : limit,
     ])
   ).map(toInvite);
   const sessions = await sessionsByInvite(rows.map((r) => r.id));
   const views = await Promise.all(rows.map((i) => jobView(i, sessions.get(i.id) ?? [])));
-  return opts.state ? views.filter((v) => v.state === opts.state) : views;
+  return opts.state ? views.filter((v) => v.state === opts.state).slice(0, limit) : views;
 }
 
 /** Returns the invite, or 404 if it doesn't exist or belongs to another operator (existence isn't revealed). */

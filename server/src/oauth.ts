@@ -82,6 +82,13 @@ wellKnown.get("/oauth-authorization-server/*", (c) => c.redirect("/.well-known/o
 
 export const oauth = new Hono();
 
+// RFC 6749 error shape for the public OAuth endpoints: { error: "<code>", error_description: "<message>" }.
+oauth.onError((e, c) => {
+  if (e instanceof ServiceError) return c.json({ error: e.code, error_description: e.message }, e.status);
+  console.error(e);
+  return c.json({ error: "server_error" }, 500);
+});
+
 oauth.post("/register", async (c) => {
   await ensureSchema();
   const b = ((await c.req.json().catch(() => null)) ?? {}) as Record<string, unknown>;
