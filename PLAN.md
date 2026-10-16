@@ -1,6 +1,6 @@
-# GigAgent: Architecture
+# Hired Gun: Architecture
 
-> **Decisions (2026-10-14):** product name **GigAgent** (formerly gig-slave) · CLI package `gigagent`, run as `npx gigagent` · macOS only for the CLI · server deploys to **Vercel** (root directory `server`) with **Postgres** (Neon) via `DATABASE_URL`; embedded PGlite locally and in e2e · models through **Vercel AI Gateway** for ids with `/` (default `anthropic/claude-haiku-5.5`), bare ids go direct to DeepSeek · jobs end with a structured **Result** (via the agent's `submit_report` tool) shown on the dashboard and sent by email (Resend, optional) and/or webhook · Pi SDK `@mariozechner/pi-coding-agent@0.73.1` · a Cloudflare tunnel + Worker remain as a self-hosting option.
+> **Decisions (2026-10-14, renamed 2026-10-16):** product name **Hired Gun** (formerly GigAgent, formerly gig-slave; identifiers keep `gigagent`, see DESIGN.md) · CLI package `gigagent`, run as `npx gigagent` · macOS only for the CLI · server deploys to **Vercel** (root directory `server`) with **Postgres** (Neon) via `DATABASE_URL`; embedded PGlite locally and in e2e · models through **Vercel AI Gateway** for ids with `/` (default `anthropic/claude-haiku-5.5`), bare ids go direct to DeepSeek · jobs end with a structured **Result** (via the agent's `submit_report` tool) shown on the dashboard and sent by email (Resend, optional) and/or webhook · Pi SDK `@mariozechner/pi-coding-agent@0.73.1` · a Cloudflare tunnel + Worker remain as a self-hosting option.
 
 CONTRACT.md is the binding reference for routes, shapes and env vars. This file explains why the pieces are shaped the way they are.
 
@@ -64,7 +64,7 @@ So you can revoke a job instantly (the next model call fails), track token use p
 
 ```
 $ npx gigagent ABCD-EFGH
-  GigAgent
+  ★ Hired Gun
   ✓ Connected: "Organize my Desktop"
   ⠋ Working…  (moving screenshots into Screenshots/)
   ● online · 2m 14s · 18 actions
@@ -84,7 +84,7 @@ $ npx gigagent ABCD-EFGH
 ## 6. Dashboard and landing page
 
 - **Dashboard** (`/dashboard`): paste the admin token once. New job form (label, task, working folder, model, expiry, optional email and webhook). On create it shows the code and the exact command. Sessions list with status, machine and token use. Session detail with live event log, structured report, instruction box, Kill and Revoke.
-- **Landing page** (`/`): marketing page for GigAgent.
+- **Landing page** (`/`): marketing page for Hired Gun. Visual direction and tokens are in [DESIGN.md](DESIGN.md).
 
 ## 7. Config and deployment
 

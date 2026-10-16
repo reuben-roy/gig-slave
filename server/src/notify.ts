@@ -49,7 +49,7 @@ function context(invite: InviteRow, session: SessionRow): Ctx {
 }
 
 const subject = (x: Ctx) =>
-  x.ok ? `✅ GigAgent: "${x.invite.label}" is done` : `⚠️ GigAgent: "${x.invite.label}" needs attention`;
+  x.ok ? `✅ Hired Gun: "${x.invite.label}" is done` : `⚠️ Hired Gun: "${x.invite.label}" needs attention`;
 
 function emailContent(x: Ctx) {
   const { result } = x;
@@ -63,7 +63,7 @@ function emailContent(x: Ctx) {
   const html = `<!doctype html><html><body style="margin:0;background:#f4f4f5;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#111827">
 <div style="max-width:620px;margin:0 auto;padding:24px">
 <div style="background:#fff;border-radius:10px;padding:24px;border:1px solid #e5e7eb">
-<div style="font-size:13px;color:#6b7280;margin-bottom:6px">GigAgent</div>
+<div style="font-size:13px;color:#6b7280;margin-bottom:6px">Hired Gun</div>
 <h1 style="font-size:20px;margin:0 0 12px">${x.ok ? "✅" : "⚠️"} ${esc(x.invite.label)} ${x.ok ? "is done" : "needs attention"}</h1>
 <p style="font-size:15px;line-height:1.5;margin:0 0 16px;white-space:pre-wrap">${esc(clip(x.summary, 4000))}</p>
 ${result?.answer ? `<h2 style="font-size:14px;margin:16px 0 6px">Answer</h2><div style="font-size:14px;line-height:1.5;white-space:pre-wrap;background:#f9fafb;border-radius:6px;padding:10px 12px">${esc(clip(result.answer, 6000))}</div>` : ""}
@@ -93,7 +93,7 @@ const sl = (s: unknown) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, 
 
 function slackText(x: Ctx) {
   const lines = [
-    `*${x.ok ? "✅" : "⚠️"} GigAgent: "${sl(clip(x.invite.label, 200))}" ${x.ok ? "is done" : "needs attention"}*`,
+    `*${x.ok ? "✅" : "⚠️"} Hired Gun: "${sl(clip(x.invite.label, 200))}" ${x.ok ? "is done" : "needs attention"}*`,
     sl(clip(x.summary, 1500)),
   ];
   if (x.result?.answer) lines.push(`*Answer*\n${sl(clip(x.result.answer, 1500))}`);
@@ -111,7 +111,7 @@ function slackText(x: Ctx) {
 const dc = (s: unknown) => String(s ?? "").replace(/@(everyone|here)/gi, "@\u200b$1");
 
 function discordText(x: Ctx) {
-  const head = `**${x.ok ? "✅" : "⚠️"} GigAgent: "${dc(clip(x.invite.label, 200))}" ${x.ok ? "is done" : "needs attention"}**`;
+  const head = `**${x.ok ? "✅" : "⚠️"} Hired Gun: "${dc(clip(x.invite.label, 200))}" ${x.ok ? "is done" : "needs attention"}**`;
   const tail = `\n${x.url}`;
   const body = dc(clip(x.summary + (x.result?.answer ? `\n\n${x.result.answer}` : ""), 1900 - head.length - tail.length));
   return `${head}\n${body}${tail}`;

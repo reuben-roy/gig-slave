@@ -1,4 +1,4 @@
-// Scripted OpenAI-compatible upstream for offline GigAgent tests (no tokens spent).
+// Scripted OpenAI-compatible upstream for offline Hired Gun tests (no tokens spent).
 //
 //   import { startMock } from "../mock/server.mjs";   // in tests
 //   node mock/server.mjs                              // standalone, PORT or 8788

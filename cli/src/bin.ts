@@ -14,12 +14,12 @@ var current = process.versions.node;
 // installing the monorepo on Vercel's Linux build machines.
 if (process.platform !== "darwin") {
   console.error("");
-  console.error("GigAgent currently works on Macs only. Please run this command on a Mac.");
+  console.error("Hired Gun currently works on Macs only. Please run this command on a Mac.");
   console.error("");
   process.exit(1);
 } else if (nodeTooOld(current)) {
   console.error("");
-  console.error("GigAgent needs a newer version of Node.js (" + REQUIRED_MAJOR + " or later). You have " + current + ".");
+  console.error("Hired Gun needs a newer version of Node.js (" + REQUIRED_MAJOR + " or later). You have " + current + ".");
   console.error("");
   console.error("How to fix it:");
   console.error("  1. Go to https://nodejs.org and click the green LTS button to download the macOS installer.");

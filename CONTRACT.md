@@ -1,6 +1,6 @@
-# GigAgent — Interface Contract (source of truth for all packages)
+# Hired Gun — Interface Contract (source of truth for all packages)
 
-Product name: **GigAgent** (display). Identifiers: `gigagent` (npm package, bin, env prefix `GIGAGENT_`, file names).
+Product name: **Hired Gun** (display; formerly GigAgent). Identifiers stay `gigagent` for compatibility (npm package, bin, env prefix `GIGAGENT_`, file names, the webhook `type`).
 All JSON. All times are unix **ms**. Errors: `{ "error": "<message>" }` with a 4xx/5xx status.
 
 ## Routes at a glance
@@ -117,7 +117,7 @@ A session is **alive** iff status ∉ {done, failed, killed}, invite.status ∉ 
 
 ## Notifications (when a session reaches a terminal state)
 Sent once per session when it ends as `done` or `failed` (including "Lost connection" from the sweeper). Not sent for `killed` (the operator did that themselves). Each attempt writes a `notification` event. Failures never break the request; each attempt has a 5 s timeout and is awaited before the response is returned (so serverless functions don't drop it).
-- **Email** (only if `RESEND_API_KEY` is set and invite.notify_email is set): `POST https://api.resend.com/emails` with `{ from: NOTIFY_FROM, to, subject, html, text }`. Subject: `✅ GigAgent: "<label>" is done` / `⚠️ GigAgent: "<label>" needs attention`. Body: summary, answer, findings table, changes list, machine, duration, link to `<PUBLIC_URL>/dashboard#session=<id>`.
+- **Email** (only if `RESEND_API_KEY` is set and invite.notify_email is set): `POST https://api.resend.com/emails` with `{ from: NOTIFY_FROM, to, subject, html, text }`. Subject: `✅ Hired Gun: "<label>" is done` / `⚠️ Hired Gun: "<label>" needs attention`. Body: summary, answer, findings table, changes list, machine, duration, link to `<PUBLIC_URL>/dashboard#session=<id>`.
 - **Webhook** (if invite.notify_webhook is set): `POST` JSON. If the host is `hooks.slack.com` → `{ text }` (Slack mrkdwn). If the host is `discord.com`/`discordapp.com` → `{ content }`. Otherwise →
   `{ "type": "gigagent.session.ended", "invite": Invite, "session": Session, "result": Result|null, "dashboard_url": string }`.
 
@@ -126,7 +126,7 @@ Sent once per session when it ends as `done` or `failed` (including "Lost connec
 `POST /v1/chat/completions` — Bearer session token. If session not alive → 403 `{error:{message:"session expired"}}`. **Force `model` to the invite's model** (the client value is ignored). Route by model id:
 - id contains `/` (e.g. `anthropic/claude-haiku-5.5`) → **Vercel AI Gateway**: `${AI_GATEWAY_BASE_URL}/chat/completions` (default `https://ai-gateway.vercel.sh/v1`) with `Authorization: Bearer ${AI_GATEWAY_API_KEY}`; if no key is set and the server runs on Vercel, use the Vercel OIDC token (`@vercel/oidc` `getVercelOidcToken()`). Merge `GATEWAY_EXTRA_BODY` (JSON object, optional).
 - otherwise → direct upstream: `${UPSTREAM_BASE_URL}/chat/completions` with `Authorization: Bearer ${UPSTREAM_API_KEY}`; merge `UPSTREAM_EXTRA_BODY`.
-Add headers `HTTP-Referer: PUBLIC_URL`, `X-Title: GigAgent`. Abuse bounds: reject bodies over 2 MB (413), clamp `max_tokens`/`max_completion_tokens` to 16000, force `n` to 1. Optional per-invite budget: env `SESSION_TOKEN_BUDGET` (default 2000000 tokens in+out per session); once a session's tokens_in+tokens_out exceed it, `/v1` returns 403 `{error:{message:"token budget exceeded"}}`. Stream the upstream response body back byte-for-byte with the same status and content-type. Parse usage best-effort (non-stream JSON `usage`, or SSE `data:` chunks containing `usage`) and add to tokens_in/tokens_out.
+Add headers `HTTP-Referer: PUBLIC_URL`, `X-Title: Hired Gun`. Abuse bounds: reject bodies over 2 MB (413), clamp `max_tokens`/`max_completion_tokens` to 16000, force `n` to 1. Optional per-invite budget: env `SESSION_TOKEN_BUDGET` (default 2000000 tokens in+out per session); once a session's tokens_in+tokens_out exceed it, `/v1` returns 403 `{error:{message:"token budget exceeded"}}`. Stream the upstream response body back byte-for-byte with the same status and content-type. Parse usage best-effort (non-stream JSON `usage`, or SSE `data:` chunks containing `usage`) and add to tokens_in/tokens_out.
 `GET /v1/models` → `{ "object":"list", "data":[{ "id": <invite model>, "object":"model" }] }`.
 
 ## Server env
@@ -140,7 +140,7 @@ DEFAULT_MODEL=anthropic/claude-haiku-5.5
 AI_GATEWAY_API_KEY=      AI_GATEWAY_BASE_URL=https://ai-gateway.vercel.sh/v1    GATEWAY_EXTRA_BODY=
 UPSTREAM_BASE_URL=https://api.deepseek.com   UPSTREAM_API_KEY=   UPSTREAM_EXTRA_BODY={"thinking":{"type":"disabled"}}
 # Notifications
-RESEND_API_KEY=          NOTIFY_FROM="GigAgent <onboarding@resend.dev>"
+RESEND_API_KEY=          NOTIFY_FROM="Hired Gun <onboarding@resend.dev>"
 CRON_SECRET=
 ```
 Sweeper: invites with expires_at < now → expired; sessions alive with last_heartbeat older than 45s → failed (status_text "Lost connection", triggers notifications). Locally it runs every 10s; on Vercel it runs lazily (at most once per 5s, at the start of `/api` and `/agent` requests) plus Vercel Cron hitting `/api/cron/sweep`.

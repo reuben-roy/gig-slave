@@ -81,7 +81,7 @@ Step 3 – Environment variables. For each project that has a ".env.example":
 
 Step 4 – Write ONE new file in this folder called "SETUP-CHECKLIST.md" with:
 - A table with one row per project: project name, tools OK or not, .env OK or not (a plain word such as Ready, Needs attention or Blocked).
-- "Fixed by GigAgent": the exact files you created.
+- "Fixed by Hired Gun": the exact files you created.
 - "Needs a human": a numbered to-do list in the order it should be done. Include the exact command for each missing tool (for example "brew install node@20") written as text only, and the names of any secrets that still need real values and who is probably the right person to ask.
 
 Do not install anything, do not run git pull or git fetch or any network command, do not change any file other than creating the new files described above, and do not open or print the contents of any .env file beyond what you need to compare key names.

@@ -80,14 +80,14 @@ async function main() {
         const removed = cleanup.run();
         if (final) {
             if (removed)
-                final.lines.push("", "Your helper has removed itself.");
+                final.lines.push("", "Hired Gun has removed itself from this Mac.");
             ui.finalBox(final);
         }
         else {
             if (message)
                 (code === 0 ? ui.say : ui.error).call(ui, message);
             if (removed)
-                ui.say(ui.interactive ? "  Your helper has removed itself." : "Your helper has removed itself.");
+                ui.say(ui.interactive ? "  Hired Gun has removed itself from this Mac." : "Hired Gun has removed itself from this Mac.");
         }
         process.exit(code);
     };
@@ -134,7 +134,7 @@ async function main() {
     };
     let code = (process.argv[2] ?? process.env.GIGAGENT_CODE ?? process.env.GIG_SLAVE_CODE ?? "").trim();
     if (api.baseUrl.includes("REPLACE-ME")) {
-        finish(1, "This copy of GigAgent hasn't been set up with a server address yet. Please tell the person who sent it to you.");
+        finish(1, "This copy of Hired Gun hasn't been set up with a server address yet. Please tell the person who sent it to you.");
     }
     ui.header();
     for (let attempt = 1;; attempt++) {
@@ -321,7 +321,7 @@ async function main() {
     lines.push("", sent ? "A report was sent to the person who asked for this. You can close this window." : "Note: the report could not be sent. Please tell the person who sent you the code.");
     if (outcome.success)
         finish(0, undefined, { ok: true, title: "All done", lines });
-    finish(1, undefined, { ok: false, title: "The helper could not finish the task", lines });
+    finish(1, undefined, { ok: false, title: "Hired Gun could not finish the job", lines });
 }
 main().catch((err) => {
     console.error(`Something went wrong: ${err instanceof Error ? err.message : String(err)}`);

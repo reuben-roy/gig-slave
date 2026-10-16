@@ -1,5 +1,5 @@
 // Starts a quick tunnel to the local server and points the stable Worker at it.
-// Self-hosting option only: the main deployment is GigAgent on Vercel (see README).
+// Self-hosting option only: the main deployment is Hired Gun on Vercel (see README).
 import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
