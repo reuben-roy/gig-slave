@@ -1,0 +1,1501 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Hired Gun: Dashboard</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#14213a">
+<link rel="icon" href="/assets/logo.svg" type="image/svg+xml">
+<link rel="preload" href="/assets/fonts/zilla-slab-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/hanken-grotesk-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/assets/brand.css">
+<style>
+  html { scroll-padding-top: 5rem; }
+  body { font-size: 0.9375rem; min-height: 100vh; }
+  h1, h2, h3, h4, h5, h6, p, ul, ol, figure { margin: 0; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  a { color: var(--brass-text); text-underline-offset: 0.15em; }
+  .ico { display: inline-flex; flex: none; vertical-align: middle; }
+  .ico svg { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .muted { color: var(--text-2); }
+  .faint { color: var(--text-3); }
+  .small { font-size: 0.8125rem; }
+  .grow { flex: 1; min-width: 0; }
+  .row { display: flex; align-items: center; gap: 0.5rem; }
+  .wrap { flex-wrap: wrap; }
+  /* `.sr` is the class the (unchanged) live-update script puts on model radios; same behaviour as .sr-only */
+  .sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+  .short-lbl { display: none; }
+  .lbl { font-size: 0.875rem; font-weight: 700; color: var(--text); }
+
+  /* ---------- top bar ---------- */
+  .top { position: sticky; top: 0; z-index: 30; background: var(--ink); color: var(--chalk); border-bottom: 3px solid var(--brass); --focus: var(--brass); }
+  .top-in { max-width: 80rem; margin: 0 auto; padding: 0.5rem 1rem; min-height: 3.5rem; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+  .top .lockup { color: var(--chalk); font-size: 1.25rem; }
+  .top .lockup img { width: 1.9rem; height: 1.9rem; }
+  .top .tag { font-family: var(--font-sans); font-weight: 600; font-size: 0.8125rem; color: var(--chalk-2); border: 1px solid #3a4f78; border-radius: 999px; padding: 0.05rem 0.6rem; }
+  .conn { display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.8125rem; font-weight: 600; color: var(--chalk-2); padding: 0.2rem 0.7rem; border: 1px solid #3a4f78; border-radius: 999px; }
+  .conn i { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: #8d9cb3; }
+  .conn[data-state="live"] i { background: #4fd39a; box-shadow: 0 0 0 3px rgba(79, 211, 154, 0.22); }
+  .conn[data-state="retry"] i { background: var(--brass); box-shadow: 0 0 0 3px rgba(242, 182, 50, 0.25); }
+  .top .links { display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; margin-left: auto; }
+  .top .btn { background: transparent; color: var(--chalk); border-color: #4a5f88; }
+  .top .btn:hover { border-color: var(--chalk); background: #1d2d4d; color: var(--chalk); }
+  .top .btn-ghost { border-color: transparent; color: var(--chalk-2); }
+  .top .btn-ghost:hover { color: var(--chalk); border-color: transparent; }
+
+  .btn-ghost { background: transparent; border-color: transparent; color: var(--text-2); }
+  .btn-ghost:hover { background: var(--surface-2); border-color: transparent; color: var(--text); }
+  .btn.is-done { color: var(--ok); border-color: var(--ok); background: var(--ok-soft); }
+
+  /* ---------- layout & panels ---------- */
+  .app { max-width: 80rem; margin: 0 auto; padding: 1.25rem 1rem 4.5rem; display: grid; grid-template-columns: minmax(0, 29rem) minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+  @media (max-width: 960px) { .app { grid-template-columns: minmax(0, 1fr); } }
+  .stack { display: grid; gap: 1.25rem; min-width: 0; }
+  /* keep the selected session in view while scrolling a long job list (desktop only) */
+  @media (min-width: 961px) { #rightCol { position: sticky; top: 4.9rem; max-height: calc(100vh - 5.9rem); overflow-y: auto; overscroll-behavior: contain; padding: 4px; margin: -4px; } }
+  .card { background: var(--surface); border: 1.5px solid var(--border-strong); border-radius: var(--radius); min-width: 0; }
+  .card-pad { padding: 1.1rem; }
+  .card-head { display: flex; align-items: center; gap: 0.6rem; padding: 0.85rem 1.1rem; border-bottom: 1px solid var(--border); }
+  .card-head h2 { font-size: 1.2rem; letter-spacing: -0.005em; }
+  .count { font-size: 0.8125rem; font-weight: 700; color: var(--ink); background: var(--brass); border: 1px solid var(--ink); border-radius: 999px; padding: 0 0.55rem; min-width: 1.5rem; text-align: center; }
+
+  /* ---------- sign-in ---------- */
+  .auth { min-height: calc(100vh - 4rem); display: grid; place-items: center; padding: 1.5rem 1rem; }
+  .auth-card { width: 100%; max-width: 28rem; padding: 1.75rem; box-shadow: var(--shadow); border-color: var(--text); border-radius: var(--radius-lg); }
+  .auth-card img { width: 3.2rem; height: 3.2rem; display: block; margin-bottom: 1rem; }
+  .auth-card h1 { font-size: 2rem; letter-spacing: -0.01em; margin-bottom: 0.4rem; }
+  .auth-card > p { color: var(--text-2); margin-bottom: 1.1rem; }
+  .auth-steps { list-style: none; padding: 0; margin: 0 0 1.1rem; display: grid; gap: 0.55rem; font-size: 0.875rem; color: var(--text-2); }
+  .auth-steps li { display: flex; gap: 0.7rem; align-items: flex-start; }
+  .auth-steps .n { flex: none; width: 1.4rem; height: 1.4rem; border-radius: 50%; background: var(--brass); color: var(--ink); border: 1px solid var(--ink); font-size: 0.75rem; font-weight: 800; display: grid; place-items: center; margin-top: 0.05rem; }
+  .auth-steps code { font-size: 0.8125rem; background: var(--surface-2); padding: 0.05rem 0.35rem; border-radius: 4px; }
+  .pw { position: relative; }
+  .pw .btn { position: absolute; right: 0.25rem; top: 50%; translate: 0 -50%; }
+  .pw input { padding-right: 4.6rem; }
+
+  /* ---------- forms ---------- */
+  .form { display: grid; gap: 1.1rem; }
+  .field { display: grid; gap: 0.35rem; min-width: 0; }
+  .field > label, .field > .lbl, legend.lbl { font-size: 0.875rem; font-weight: 700; color: var(--text); padding: 0; }
+  .field .opt { font-weight: 400; color: var(--text-3); }
+  fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+  input[type=text], input[type=email], input[type=url], input[type=password], input[type=number], textarea, select {
+    width: 100%; background: var(--surface); color: var(--text); border: 1.5px solid var(--border-strong); border-radius: var(--radius-sm); padding: 0.5rem 0.75rem; min-height: 2.75rem; transition: border-color 0.12s;
+  }
+  textarea { resize: vertical; min-height: 7.5rem; line-height: 1.5; }
+  input::placeholder, textarea::placeholder { color: var(--text-3); }
+  input:hover, textarea:hover, select:hover { border-color: var(--text); }
+  input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-color: var(--text); }
+  input:disabled, textarea:disabled { background: var(--surface-2); color: var(--text-3); cursor: not-allowed; }
+  input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--bad); border-width: 2px; }
+  .hint { font-size: 0.8125rem; color: var(--text-3); }
+  .field-err { font-size: 0.8125rem; color: var(--bad); font-weight: 650; }
+  .field-err:empty { display: none; }
+  .alert { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.65rem 0.8rem; border-radius: var(--radius-sm); font-size: 0.875rem; overflow-wrap: anywhere; }
+  .alert-err { background: var(--bad-soft); color: var(--bad); border: 1.5px solid var(--bad); font-weight: 600; }
+  .alert-info { background: var(--info-soft); color: var(--info); }
+  .alert .ico { margin-top: 0.15rem; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .chip { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 2.25rem; border: 1.5px solid var(--border-strong); background: var(--surface); border-radius: 999px; padding: 0.2rem 0.8rem; font-size: 0.8125rem; font-weight: 650; color: var(--text-2); cursor: pointer; transition: border-color 0.12s, background-color 0.12s; }
+  .chip:hover { border-color: var(--text); color: var(--text); }
+  .chip[aria-pressed="true"] { background: var(--brass); border-color: var(--ink); color: var(--ink); }
+  .chip .ico { color: currentColor; }
+  @media (pointer: coarse) { .chip { min-height: 2.75rem; } }
+
+  .seg { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--surface-2); border: 1.5px solid var(--border-strong); border-radius: var(--radius-sm); padding: 3px; gap: 3px; }
+  .seg label { display: flex; align-items: center; justify-content: center; text-align: center; min-height: 2.4rem; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.875rem; font-weight: 650; color: var(--text-2); cursor: pointer; transition: background-color 0.12s; }
+  .seg label:hover { color: var(--text); }
+  .seg input:checked + label { background: var(--brass); color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--ink); }
+  .seg input:focus-visible + label { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .help { display: flex; gap: 0.5rem; font-size: 0.8125rem; color: var(--text-2); background: var(--surface-2); border-radius: var(--radius-sm); padding: 0.55rem 0.7rem; }
+  .help .ico { color: var(--text-3); margin-top: 0.1rem; }
+
+  .models { display: grid; gap: 0.5rem; }
+  .model input + label { display: flex; align-items: center; gap: 0.7rem; border: 1.5px solid var(--border-strong); border-radius: var(--radius-sm); padding: 0.55rem 0.75rem; min-height: 2.75rem; cursor: pointer; background: var(--surface); transition: border-color 0.12s; }
+  .model input + label:hover { border-color: var(--text); }
+  .model input:checked + label { border-color: var(--ink); background: var(--brass-soft); box-shadow: inset 0 0 0 1px var(--ink); }
+  @media (prefers-color-scheme: dark) { .model input:checked + label { border-color: var(--brass); box-shadow: inset 0 0 0 1px var(--brass); } }
+  .model input:focus-visible + label { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .model .radio { flex: none; width: 1.1rem; height: 1.1rem; border-radius: 50%; border: 2px solid var(--border-strong); display: grid; place-items: center; }
+  .model input:checked + label .radio { border-color: var(--text); background: var(--text); box-shadow: inset 0 0 0 3px var(--brass-soft); }
+  .model .mname { font-weight: 700; font-size: 0.875rem; }
+  .model .mid { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-3); overflow-wrap: anywhere; }
+  .badge { display: inline-flex; align-items: center; font-size: 0.75rem; font-weight: 600; line-height: 1.5; padding: 0 0.5rem; border-radius: 999px; border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text-2); white-space: nowrap; }
+
+  .inline-unit { display: flex; gap: 0.5rem; align-items: center; }
+  .inline-unit input { max-width: 7rem; }
+  .notify { border: 1.5px dashed var(--border-strong); border-radius: var(--radius-sm); padding: 0.9rem; display: grid; gap: 0.9rem; }
+  .notify legend { padding: 0 0.4rem; margin-left: -0.4rem; }
+
+  /* ---------- success ticket ---------- */
+  .success { box-shadow: var(--shadow); }
+  .success-head { display: flex; gap: 0.75rem; align-items: flex-start; padding: 1rem 1.1rem 0.4rem; }
+  .success-head .ok-ico { flex: none; width: 1.8rem; height: 1.8rem; border-radius: 50%; background: var(--ok); color: var(--bg); display: grid; place-items: center; }
+  @media (prefers-color-scheme: dark) { .success-head .ok-ico { color: #062015; } }
+  .success-head h2 { font-size: 1.25rem; }
+  .success-head p { font-size: 0.875rem; color: var(--text-2); margin-top: 0.15rem; }
+  .success-code { padding: 0.6rem 1.1rem 1.3rem; display: grid; gap: 0.5rem; }
+  .success-body { padding: 1.1rem; display: grid; gap: 1rem; }
+  .bigcode { font-family: var(--font-display); font-weight: 700; font-size: clamp(2rem, 9vw, 2.9rem); letter-spacing: 0.06em; line-height: 1.1; color: var(--ink); background: var(--brass); border: 1.5px solid var(--ink); border-radius: var(--radius-sm); padding: 0.6rem 0.9rem; text-align: center; user-select: all; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+  .cmdbox { display: flex; gap: 0.5rem; align-items: stretch; flex-wrap: wrap; }
+  .cmdbox code { flex: 1 1 12rem; min-width: 0; background: var(--ink); color: var(--chalk); border-radius: var(--radius-sm); padding: 0.55rem 0.8rem; font-size: 0.8125rem; overflow-wrap: anywhere; display: flex; align-items: center; }
+  .msgbox { background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 0.65rem 0.8rem; font-size: 0.875rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .actions-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+  /* ---------- jobs ---------- */
+  .jobs { display: grid; }
+  .job { padding: 1rem 1.1rem; border-top: 1px solid var(--border); display: grid; gap: 0.5rem; }
+  .job:first-child { border-top: 0; }
+  .job-head { display: flex; gap: 0.6rem; align-items: center; justify-content: space-between; }
+  .job-title { font-size: 1.05rem; min-width: 0; overflow-wrap: anywhere; letter-spacing: -0.005em; }
+  .job-meta { font-size: 0.8125rem; color: var(--text-3); display: flex; flex-wrap: wrap; gap: 0.25rem 0.6rem; align-items: center; }
+  .job-meta .sep { opacity: 0.6; }
+  .job-task { font-size: 0.875rem; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+  .job-wait { font-size: 0.8125rem; color: var(--text-3); display: flex; gap: 0.4rem; align-items: center; }
+  .job-foot { display: flex; justify-content: flex-end; }
+  .sess-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
+  .sess { width: 100%; text-align: left; display: grid; grid-template-columns: auto 1fr; gap: 0.1rem 0.65rem; align-items: start; padding: 0.55rem 0.7rem; border: 1.5px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); cursor: pointer; transition: border-color 0.12s, background-color 0.12s; }
+  .sess:hover { border-color: var(--text); background: var(--surface-2); }
+  .sess[aria-current="true"] { border-color: var(--ink); background: var(--brass-soft); box-shadow: inset 0 0 0 1px var(--ink); }
+  @media (prefers-color-scheme: dark) { .sess[aria-current="true"] { border-color: var(--brass); box-shadow: inset 0 0 0 1px var(--brass); } }
+  .sess .sdot { margin-top: 0.4rem; }
+  .sess-top { display: flex; gap: 0.5rem; align-items: baseline; flex-wrap: wrap; min-width: 0; }
+  .sess-name { font-weight: 700; font-size: 0.875rem; overflow-wrap: anywhere; }
+  .sess-st { font-size: 0.8125rem; font-weight: 700; }
+  .sess-text { font-size: 0.8125rem; color: var(--text-2); overflow-wrap: anywhere; }
+  .sess-meta { font-size: 0.75rem; color: var(--text-3); }
+  .sess > .grow { display: grid; gap: 0.05rem; }
+
+  .sdot { width: 0.6rem; height: 0.6rem; border-radius: 50%; display: inline-block; flex: none; background: var(--text-3); }
+  .tone-ok .sdot, .sdot.tone-ok { background: var(--ok); }
+  .tone-bad .sdot, .sdot.tone-bad { background: var(--bad); }
+  .tone-warn .sdot, .sdot.tone-warn { background: var(--brass); box-shadow: 0 0 0 1px var(--ink); }
+  .tone-info .sdot, .sdot.tone-info { background: var(--info); }
+  .sdot.pulse { animation: pulse 1.6s ease-out infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 55%, transparent); } 100% { box-shadow: 0 0 0 7px transparent; } }
+  .tone-ok.txt { color: var(--ok); } .tone-bad.txt { color: var(--bad); } .tone-warn.txt { color: var(--warn); } .tone-info.txt { color: var(--info); } .tone-muted.txt { color: var(--text-2); }
+  .pill { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; font-weight: 700; padding: 0.1rem 0.65rem; border-radius: 999px; white-space: nowrap; background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border-strong); }
+  .pill.tone-ok { background: var(--ok-soft); color: var(--ok); border-color: var(--ok); }
+  .pill.tone-bad { background: var(--bad-soft); color: var(--bad); border-color: var(--bad); }
+  .pill.tone-warn { background: var(--warn-soft); color: var(--warn); border-color: var(--warn); }
+  .pill.tone-info { background: var(--info-soft); color: var(--info); border-color: var(--info); }
+
+  .empty { padding: 1.4rem 1.1rem 1.5rem; display: grid; gap: 0.9rem; }
+  .empty h3 { font-size: 1.2rem; }
+  .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.8rem; }
+  .steps li { display: flex; gap: 0.75rem; align-items: flex-start; }
+  .steps .n { flex: none; width: 1.6rem; height: 1.6rem; border-radius: 50%; background: var(--brass); color: var(--ink); border: 1px solid var(--ink); font-family: var(--font-display); font-weight: 700; font-size: 0.875rem; display: grid; place-items: center; }
+  .steps b { display: block; font-size: 0.875rem; }
+  .steps span { font-size: 0.8125rem; color: var(--text-2); }
+
+  /* loading skeleton (removed by the first render of the list) */
+  .jobs-loading { padding: 1.1rem; display: grid; gap: 0.7rem; }
+  #listErr:not([hidden]) ~ #jobs .jobs-loading { display: none; }
+  .skel { height: 0.9rem; border-radius: 4px; background: linear-gradient(90deg, var(--surface-2), var(--border), var(--surface-2)); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+  .skel.w1 { width: 55%; height: 1.1rem; } .skel.w2 { width: 90%; } .skel.w3 { width: 70%; }
+  @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+  /* ---------- detail ---------- */
+  .detail-empty { padding: 3rem 1.5rem; text-align: center; color: var(--text-2); display: grid; gap: 0.5rem; justify-items: center; border-style: dashed; background: transparent; }
+  .detail-empty .ring { width: 3rem; height: 3rem; border-radius: 50%; background: var(--brass); color: var(--ink); border: 1.5px solid var(--ink); display: grid; place-items: center; }
+  .detail-empty h2 { font-size: 1.3rem; color: var(--text); }
+  @media (max-width: 960px) { .detail-empty { display: none; } }
+  .d-top { padding: 1rem 1.1rem 0.9rem; display: grid; gap: 0.75rem; }
+  .d-title { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 0.5rem 0.6rem; align-items: start; }
+  .d-title h2 { font-size: 1.5rem; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+  .d-sub { font-size: 0.8125rem; color: var(--text-3); overflow-wrap: anywhere; margin-top: 0.2rem; }
+  .d-back { display: none; }
+  @media (max-width: 960px) { .d-back { display: inline-flex; grid-column: 1 / -1; justify-self: start; } }
+  .d-status { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; font-size: 0.875rem; }
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; }
+  @media (max-width: 560px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .stat { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.5rem 0.7rem; min-width: 0; }
+  .stat .k { font-size: 0.75rem; color: var(--text-3); font-weight: 600; }
+  .stat .v { font-size: 0.9375rem; font-weight: 700; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: 0.4rem; }
+
+  .result { overflow: hidden; }
+  .banner { display: flex; gap: 0.75rem; align-items: flex-start; padding: 0.9rem 1.1rem; }
+  .banner.ok { background: var(--ok-soft); color: var(--ok); }
+  .banner.bad { background: var(--bad-soft); color: var(--bad); }
+  .banner .ring { flex: none; width: 1.8rem; height: 1.8rem; border-radius: 50%; display: grid; place-items: center; color: var(--surface); }
+  .banner.ok .ring { background: var(--ok); } .banner.bad .ring { background: var(--bad); }
+  @media (prefers-color-scheme: dark) { .banner .ring { color: #1a0a07; } }
+  .banner h3 { font-size: 1.2rem; }
+  .banner p { color: var(--text); font-size: 0.875rem; margin-top: 0.15rem; overflow-wrap: anywhere; white-space: pre-wrap; }
+  .r-sec { padding: 0.9rem 1.1rem; border-top: 1px solid var(--border); display: grid; gap: 0.5rem; }
+  .r-sec > h4 { font-family: var(--font-sans); font-size: 0.8125rem; font-weight: 700; color: var(--text-3); }
+  .answer { background: var(--surface-2); border-radius: var(--radius-sm); padding: 0.75rem 0.9rem; overflow-x: auto; }
+  .kv { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+  .kv th, .kv td { text-align: left; vertical-align: top; padding: 0.45rem 0.65rem; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+  .kv tr:last-child th, .kv tr:last-child td { border-bottom: 0; }
+  .kv th { width: 36%; font-weight: 500; color: var(--text-2); }
+  .kv td { font-weight: 650; }
+  .kv-wrap { border: 1px solid var(--border-strong); border-radius: var(--radius-sm); overflow-x: auto; }
+  .changes { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.25rem; font-size: 0.875rem; }
+  .changes li { display: flex; gap: 0.5rem; align-items: flex-start; overflow-wrap: anywhere; }
+  .changes .ico { color: var(--ok); margin-top: 0.2rem; }
+  .notes { display: grid; gap: 0.25rem; font-size: 0.875rem; }
+  .notes div { display: flex; gap: 0.5rem; align-items: flex-start; overflow-wrap: anywhere; }
+  .notes .ok { color: var(--ok); } .notes .bad { color: var(--bad); }
+  .notes .ico { margin-top: 0.2rem; }
+
+  /* markdown */
+  .md { font-size: 0.875rem; line-height: 1.6; overflow-wrap: anywhere; }
+  .md > :first-child { margin-top: 0; } .md > :last-child { margin-bottom: 0; }
+  .md p { margin: 0 0 0.65em; }
+  .md h3, .md h4, .md h5, .md h6 { margin: 1em 0 0.4em; line-height: 1.3; }
+  .md h3 { font-size: 1.15rem; } .md h4 { font-size: 1.05rem; } .md h5, .md h6 { font-size: 0.95rem; }
+  .md ul, .md ol { margin: 0 0 0.65em; padding-left: 1.4em; }
+  .md li { margin: 0.15em 0; }
+  .md code { font-size: 0.8125rem; background: color-mix(in srgb, var(--text) 9%, transparent); padding: 0.05rem 0.3rem; border-radius: 4px; }
+  .md pre { margin: 0 0 0.75em; padding: 0.65rem 0.75rem; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); overflow-x: auto; }
+  .md pre code { background: none; padding: 0; }
+  .md blockquote { margin: 0 0 0.65em; padding: 0.1rem 0.8rem; border-left: 4px solid var(--brass); color: var(--text-2); }
+  .md hr { border: 0; border-top: 1px solid var(--border-strong); margin: 0.9em 0; }
+  .md table { border-collapse: collapse; margin: 0 0 0.75em; font-size: 0.8125rem; display: block; overflow-x: auto; max-width: 100%; }
+  .md th, .md td { border: 1px solid var(--border-strong); padding: 0.3rem 0.55rem; text-align: left; vertical-align: top; }
+  .md th { background: var(--surface); font-weight: 700; }
+
+  /* activity timeline */
+  .tl-head { display: flex; align-items: center; gap: 0.6rem; padding: 0.75rem 1.1rem; border-bottom: 1px solid var(--border); }
+  .tl-head h3 { font-size: 1.2rem; }
+  .instr { padding: 0.75rem 1.1rem; border-bottom: 1px solid var(--border); display: grid; gap: 0.4rem; background: var(--surface-2); }
+  .instr form { display: flex; gap: 0.5rem; }
+  .instr input { flex: 1; min-width: 0; }
+  .tl-wrap { position: relative; }
+  .tl { max-height: min(62vh, 40rem); min-height: 10rem; overflow-y: auto; overscroll-behavior: contain; padding: 0.4rem 0.75rem 0.75rem 1.1rem; }
+  .tl-empty { padding: 1.75rem 0.5rem; text-align: center; color: var(--text-3); }
+  .ev { display: grid; grid-template-columns: 1.7rem minmax(0, 1fr); gap: 0 0.65rem; padding: 0.5rem 0; position: relative; }
+  .ev::before { content: ""; position: absolute; left: 0.8rem; top: 2.2rem; bottom: -0.5rem; width: 2px; background: var(--border); }
+  .ev:last-child::before { display: none; }
+  .ev-ico { width: 1.7rem; height: 1.7rem; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); color: var(--text-2); border: 1.5px solid var(--border-strong); z-index: 1; }
+  .ev-ico.assistant { background: var(--brass); color: var(--ink); border-color: var(--ink); }
+  .ev-ico.tool { background: var(--info-soft); color: var(--info); border-color: var(--info); }
+  .ev-ico.error { background: var(--bad-soft); color: var(--bad); border-color: var(--bad); }
+  .ev-ico.instruction { background: var(--warn-soft); color: var(--warn); border-color: var(--warn); }
+  .ev-ico.report { background: var(--ok-soft); color: var(--ok); border-color: var(--ok); }
+  .ev-body { min-width: 0; padding-top: 0.1rem; }
+  .ev-meta { display: flex; gap: 0.5rem; align-items: baseline; font-size: 0.75rem; color: var(--text-3); }
+  .ev-meta b { color: var(--text-2); font-weight: 700; font-size: 0.8125rem; }
+  .ev-meta time { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .ev-text { font-size: 0.875rem; margin-top: 0.15rem; overflow-wrap: anywhere; }
+  .ev-status { font-size: 0.8125rem; color: var(--text-2); }
+  .ev.instruction .ev-text { background: var(--warn-soft); border-left: 4px solid var(--brass); border-radius: var(--radius-sm); padding: 0.45rem 0.65rem; }
+  .ev.error .ev-text { background: var(--bad-soft); color: var(--bad); border-radius: var(--radius-sm); padding: 0.45rem 0.65rem; font-weight: 650; }
+  .ev.report .ev-text { background: var(--ok-soft); border-radius: var(--radius-sm); padding: 0.45rem 0.65rem; }
+  .ev.report.fail .ev-text { background: var(--bad-soft); }
+  details.tool { margin-top: 0.2rem; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); }
+  details.tool > summary { list-style: none; cursor: pointer; padding: 0.4rem 0.65rem; min-height: 2.25rem; display: flex; gap: 0.5rem; align-items: center; min-width: 0; border-radius: var(--radius-sm); }
+  details.tool > summary::-webkit-details-marker { display: none; }
+  details.tool > summary:hover { background: var(--surface-2); }
+  details.tool > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+  details.tool .chev { transition: rotate 0.12s; color: var(--text-3); }
+  details.tool[open] .chev { rotate: 90deg; }
+  .tool-name { font-size: 0.8125rem; font-weight: 700; white-space: nowrap; }
+  .tool-arg { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+  .tool-state { font-size: 0.75rem; font-weight: 700; white-space: nowrap; display: inline-flex; gap: 0.25rem; align-items: center; }
+  .tool-state.run { color: var(--text-3); } .tool-state.ok { color: var(--ok); } .tool-state.bad { color: var(--bad); }
+  .tool-body { padding: 0.25rem 0.65rem 0.65rem; display: grid; gap: 0.5rem; border-top: 1px solid var(--border); }
+  .tool-body h5 { font-family: var(--font-sans); font-size: 0.75rem; font-weight: 700; color: var(--text-3); margin-top: 0.4rem; }
+  .tool-body pre { margin: 0; padding: 0.5rem 0.65rem; background: var(--ink); color: var(--chalk); border-radius: var(--radius-sm); font-size: 0.75rem; max-height: 16rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .jump { position: absolute; left: 50%; bottom: 0.75rem; translate: -50% 0; box-shadow: var(--shadow); }
+
+  /* ---------- toasts & dialog ---------- */
+  .toasts { position: fixed; right: 1rem; bottom: 1rem; z-index: 60; display: grid; gap: 0.6rem; width: min(24rem, calc(100vw - 2rem)); pointer-events: none; }
+  @media (max-width: 560px) { .toasts { left: 1rem; width: auto; } }
+  .toast { pointer-events: auto; display: flex; gap: 0.6rem; align-items: flex-start; background: var(--surface); border: 1.5px solid var(--text); border-left-width: 6px; border-radius: var(--radius-sm); box-shadow: var(--shadow-lg); padding: 0.7rem 0.7rem 0.7rem 0.8rem; animation: slide-in 0.2s ease-out; }
+  .toast.ok { border-left-color: var(--ok); } .toast.bad { border-left-color: var(--bad); } .toast.info { border-left-color: var(--info); }
+  .toast .ico { margin-top: 0.1rem; }
+  .toast.ok .ico { color: var(--ok); } .toast.bad .ico { color: var(--bad); } .toast.info .ico { color: var(--info); }
+  .toast h4 { font-family: var(--font-sans); font-size: 0.875rem; font-weight: 700; overflow-wrap: anywhere; }
+  .toast p { font-size: 0.8125rem; color: var(--text-2); margin-top: 0.1rem; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .toast .acts { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
+  @keyframes slide-in { from { opacity: 0; translate: 0 8px; } to { opacity: 1; translate: 0 0; } }
+  dialog { border: 1.5px solid var(--text); border-radius: var(--radius-lg); background: var(--surface); color: var(--text); box-shadow: var(--shadow-lg); padding: 0; width: min(26rem, calc(100vw - 2rem)); }
+  dialog::backdrop { background: rgba(8, 13, 24, 0.62); }
+  dialog form { padding: 1.3rem; display: grid; gap: 0.8rem; }
+  dialog h2 { font-size: 1.35rem; }
+  dialog p { font-size: 0.9375rem; color: var(--text-2); }
+  dialog .actions-row { justify-content: flex-end; margin-top: 0.3rem; }
+
+  @media (max-width: 560px) {
+    input[type=text], input[type=email], input[type=url], input[type=password], input[type=number], textarea, select { font-size: 1rem; }
+    .full-lbl { display: none; } .short-lbl { display: inline; }
+    .top .tag { display: none; }
+    .top .btn-sm { min-height: 2.75rem; }
+    .top { position: static; }
+    .d-title h2 { font-size: 1.3rem; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sdot.pulse, .skel { animation: none; }
+    .toast { animation: none; }
+    .btn, .chip, .sess, details.tool .chev { transition: none; }
+  }
+  @media (forced-colors: active) {
+    .seg input:checked + label, .chip[aria-pressed="true"], .model input:checked + label, .sess[aria-current="true"] { outline: 2px solid Highlight; }
+    .sdot { border: 1px solid CanvasText; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-in">
+    <a class="lockup" href="/"><img src="/assets/logo.svg" alt="" width="30" height="30"><span>Hired Gun</span><span class="tag">Dashboard</span></a>
+    <span id="conn" class="conn" data-state="off" role="status" aria-live="polite" hidden><i aria-hidden="true"></i><span id="connText">Connecting…</span></span>
+    <nav class="links" aria-label="Dashboard">
+      <button type="button" id="notifBtn" class="btn btn-sm" hidden></button>
+      <a class="btn btn-sm btn-ghost" href="/" id="homeLink"></a>
+      <button type="button" id="signOut" class="btn btn-sm btn-ghost" hidden></button>
+    </nav>
+  </div>
+</header>
+
+<noscript><p style="padding:1.5rem">The Hired Gun dashboard needs JavaScript.</p></noscript>
+
+<!-- sign in -->
+<main id="auth" class="auth" aria-labelledby="authTitle" hidden>
+  <div class="card auth-card">
+    <img src="/assets/logo.svg" alt="" width="52" height="52">
+    <h1 id="authTitle">Sign in to Hired Gun</h1>
+    <p>This is the operator dashboard. Create a job, send a code to the person at the computer, and watch your agent work in real time.</p>
+    <ol class="auth-steps">
+      <li><span class="n">1</span><span>Paste the <b>admin token</b>, the <code>ADMIN_TOKEN</code> value you set on your Hired Gun server.</span></li>
+      <li><span class="n">2</span><span>It’s saved in this browser only and sent only to this server.</span></li>
+    </ol>
+    <form id="tokenForm" class="form" autocomplete="off" novalidate>
+      <div class="field">
+        <label for="tokenInput">Admin token</label>
+        <div class="pw">
+          <input id="tokenInput" type="password" placeholder="Paste your token" spellcheck="false" autocapitalize="off" aria-describedby="tokenErr" required>
+          <button type="button" id="tokenShow" class="btn btn-sm btn-ghost" aria-pressed="false">Show</button>
+        </div>
+        <div id="tokenErr" class="field-err" role="alert"></div>
+      </div>
+      <button class="btn btn-primary btn-lg btn-block" id="tokenBtn" type="submit">Sign in</button>
+    </form>
+  </div>
+</main>
+
+<!-- app -->
+<main id="app" class="app" aria-label="Dashboard" hidden>
+  <h1 class="sr-only">Hired Gun dashboard</h1>
+  <div class="stack" id="leftCol">
+
+    <section id="success" class="ticket success" aria-labelledby="succTitle" hidden>
+      <div class="success-head">
+        <span class="ok-ico" id="succIcon"></span>
+        <div class="grow">
+          <h2 id="succTitle" tabindex="-1">Job created</h2>
+          <p id="succSub"></p>
+        </div>
+        <button type="button" class="btn btn-sm btn-ghost" id="succClose" aria-label="Dismiss"></button>
+      </div>
+      <div class="success-code">
+        <span class="lbl">Access code</span>
+        <div class="bigcode" id="succCode"></div>
+        <div class="actions-row"><button type="button" class="btn" id="copyCode" data-copy="code"></button></div>
+      </div>
+      <div class="ticket-tear" aria-hidden="true"></div>
+      <div class="success-body">
+        <div class="field">
+          <span class="lbl">Command to run</span>
+          <div class="cmdbox"><code id="succCmd"></code><button type="button" class="btn" id="copyCmd"></button></div>
+        </div>
+        <div class="field">
+          <span class="lbl">Message to send them</span>
+          <div class="msgbox" id="succMsg"></div>
+          <div class="actions-row"><button type="button" class="btn btn-primary" id="copyMsg"></button></div>
+        </div>
+        <p class="hint">The code is only shown now. If you lose it, revoke this job and create a new one.</p>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="newTitle">
+      <div class="card-head"><h2 id="newTitle">New job</h2></div>
+      <form id="newForm" class="form card-pad" novalidate>
+        <div class="field">
+          <span class="lbl" id="tplLbl">Start from a template</span>
+          <div class="chips" id="tpls" role="group" aria-labelledby="tplLbl"></div>
+        </div>
+        <div class="field">
+          <label for="fLabel">Label</label>
+          <div class="hint" id="hLabel">Just for you, so you can find this job later.</div>
+          <input id="fLabel" type="text" maxlength="120" placeholder="Dad’s iMac" aria-describedby="eLabel hLabel" autocomplete="off">
+          <div class="field-err" id="eLabel" role="alert"></div>
+        </div>
+        <div class="field">
+          <label for="fTask">What should the agent do?</label>
+          <textarea id="fTask" rows="6" placeholder="Describe the job in plain English, e.g. “Organize my Desktop into folders by type. Never delete anything.”" aria-describedby="eTask"></textarea>
+          <div class="field-err" id="eTask" role="alert"></div>
+        </div>
+        <div class="field">
+          <label for="fDir">Working folder</label>
+          <div class="hint" id="hDir">The agent is told to stay inside this folder on their Mac.</div>
+          <input id="fDir" type="text" class="mono" value="~/Desktop" aria-describedby="hDir" autocomplete="off" spellcheck="false">
+        </div>
+        <fieldset class="field">
+          <legend class="lbl">Model</legend>
+          <div class="models" id="models" role="radiogroup" aria-label="Model"></div>
+        </fieldset>
+        <fieldset class="field">
+          <legend class="lbl">When should the code stop working?</legend>
+          <div class="seg" role="radiogroup" aria-label="Expiry policy" id="policySeg">
+            <input class="sr-only" type="radio" name="policy" id="pol-one_use" value="one_use" checked><label for="pol-one_use">One use</label>
+            <input class="sr-only" type="radio" name="policy" id="pol-on_complete" value="on_complete"><label for="pol-on_complete">Until done</label>
+            <input class="sr-only" type="radio" name="policy" id="pol-ttl" value="ttl"><label for="pol-ttl">Time limit</label>
+          </div>
+          <div class="help" id="policyHelp" aria-live="polite"></div>
+        </fieldset>
+        <div class="field" id="ttlRow" hidden>
+          <label for="fTtl">Valid for</label>
+          <div class="inline-unit"><input id="fTtl" type="number" min="1" step="1" value="24" inputmode="numeric" aria-describedby="eTtl"><span class="muted">hours</span></div>
+          <div class="chips">
+            <button type="button" class="chip" data-ttl="1">1 hour</button>
+            <button type="button" class="chip" data-ttl="24">1 day</button>
+            <button type="button" class="chip" data-ttl="168">1 week</button>
+            <button type="button" class="chip" data-ttl="720">30 days</button>
+          </div>
+          <div class="field-err" id="eTtl" role="alert"></div>
+        </div>
+        <fieldset class="notify">
+          <legend class="lbl">Tell me when it’s done</legend>
+          <div class="field">
+            <label for="fEmail">Email <span class="opt">(optional)</span></label>
+            <div class="hint" id="hEmail">We’ll email you the summary and answer.</div>
+            <input id="fEmail" type="email" placeholder="you@example.com" autocomplete="email" aria-describedby="hEmail eEmail">
+            <div class="field-err" id="eEmail" role="alert"></div>
+          </div>
+          <div class="field">
+            <label for="fHook">Slack, Discord or webhook URL <span class="opt">(optional)</span></label>
+            <div class="hint" id="hHook">We’ll post a short summary here. Slack and Discord incoming webhooks work as-is.</div>
+            <input id="fHook" type="url" placeholder="https://hooks.slack.com/services/…" autocomplete="off" spellcheck="false" aria-describedby="hHook eHook">
+            <div class="field-err" id="eHook" role="alert"></div>
+          </div>
+        </fieldset>
+        <div id="formErr" class="alert alert-err" role="alert" hidden></div>
+        <button class="btn btn-primary btn-lg btn-block" id="newBtn" type="submit">Create job and get code</button>
+      </form>
+    </section>
+
+    <section class="card" aria-labelledby="jobsTitle">
+      <div class="card-head"><h2 id="jobsTitle">Jobs</h2><span class="count" id="jobsCount">0</span><span class="grow"></span></div>
+      <div id="listErr" class="alert alert-err" role="alert" hidden style="margin:0.75rem 1.1rem 0"></div>
+      <div id="jobs" class="jobs"><div class="jobs-loading" role="status"><span class="sr-only">Loading jobs…</span><span class="skel w1" aria-hidden="true"></span><span class="skel w2" aria-hidden="true"></span><span class="skel w3" aria-hidden="true"></span></div></div>
+    </section>
+  </div>
+
+  <div class="stack" id="rightCol">
+    <section class="card detail-empty" id="detailEmpty" aria-live="polite">
+      <span class="ring" id="emptyIcon"></span>
+      <h2>Pick a session to watch it work</h2>
+      <p style="max-width:20rem">Create a job, send the code, and when someone runs it their session appears under that job. Select it to see the live activity and the report.</p>
+    </section>
+
+    <section id="detail" class="stack" aria-labelledby="dTitle" hidden>
+      <div class="card">
+        <div class="d-top">
+          <div class="d-title">
+            <button type="button" id="dBack" class="btn btn-sm btn-ghost d-back" aria-label="Back to jobs"></button>
+            <div class="grow">
+              <h2 id="dTitle"></h2>
+              <div class="d-sub" id="dSub"></div>
+            </div>
+            <button type="button" id="dStop" class="btn btn-sm btn-danger" hidden></button>
+            <button type="button" id="dClose" class="btn btn-sm btn-ghost" aria-label="Close session"></button>
+          </div>
+          <div class="d-status" id="dStatus"></div>
+          <div class="stats" id="dStats"></div>
+        </div>
+      </div>
+
+      <div id="dResult" class="card result" hidden></div>
+
+      <div class="card">
+        <div class="tl-head"><h3>Activity</h3><span class="count" id="tlCount">0</span><span class="grow"></span><span class="small faint" id="tlFollow"></span></div>
+        <div class="instr" id="instrBox" hidden>
+          <form id="instrForm" autocomplete="off">
+            <label class="sr-only" for="instrText">Send an instruction to the agent</label>
+            <input id="instrText" type="text" placeholder="Send an instruction, e.g. “Skip the Photos folder”" maxlength="2000">
+            <button class="btn btn-primary" id="instrBtn" type="submit"></button>
+          </form>
+          <div id="instrErr" class="field-err" role="alert"></div>
+        </div>
+        <div class="tl-wrap">
+          <div id="tl" class="tl" tabindex="0" role="log" aria-label="Session activity" aria-live="off"></div>
+          <button type="button" id="jump" class="btn btn-sm btn-primary jump" hidden></button>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<div class="toasts" id="toasts" role="status" aria-live="polite" aria-atomic="false"></div>
+
+<dialog id="dlg" aria-labelledby="dlgTitle">
+  <form method="dialog" id="dlgForm">
+    <h2 id="dlgTitle"></h2>
+    <p id="dlgMsg"></p>
+    <div class="actions-row">
+      <button type="submit" value="cancel" class="btn" id="dlgCancel">Cancel</button>
+      <button type="submit" value="ok" class="btn btn-primary" id="dlgOk">Confirm</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(() => {
+  'use strict';
+  const KEY = 'gigagentAdminToken';
+  const OLD_KEY = 'gigSlaveAdminToken';
+  const TERMINAL = ['done', 'failed', 'killed'];
+  const SESS = {
+    connecting: ['Connecting', 'warn'], working: ['Working', 'ok'], idle: ['Idle', 'muted'],
+    done: ['Done', 'ok'], failed: ['Failed', 'bad'], killed: ['Stopped', 'warn'],
+  };
+  const INV = {
+    pending: ['Waiting for code', 'warn'], active: ['Active', 'info'], completed: ['Completed', 'ok'],
+    expired: ['Expired', 'muted'], revoked: ['Revoked', 'bad'],
+  };
+  const POLICY = { one_use: 'One use', on_complete: 'Until done', ttl: 'Time limit' };
+  const POLICY_HELP = {
+    one_use: 'The code stops working as soon as one person has used it. Best for a single computer.',
+    on_complete: 'The code keeps working until a run finishes successfully, so the person can retry if something goes wrong.',
+    ttl: 'The code works for a set number of hours and can be used on several computers. Revoke it any time.',
+  };
+  const PROVIDER = { gateway: 'Vercel AI Gateway', deepseek: 'DeepSeek' };
+  const TEMPLATES = [
+    { id: 'newhire', name: 'New-hire laptop check', label: 'New-hire laptop check', dir: '~/Desktop',
+      task: 'Check that this Mac is set up properly for a new hire. This is a read-only task: do not install, change, move or delete anything, and you may read system info and /Applications even though they are outside the working folder.\n\n1. Find the macOS version (sw_vers).\n2. Check whether FileVault disk encryption is on (fdesetup status).\n3. Report free disk space (df -h /).\n4. List every app in /Applications and ~/Applications, then say which of these required apps are missing: Slack, Zoom, Google Chrome, 1Password, Microsoft Word, Microsoft Excel.\n\nReport macOS version, FileVault and free disk space as key findings. Put the list of missing apps (or "none missing") in the answer.' },
+    { id: 'disk', name: 'Disk space rescue', label: 'Disk space rescue', dir: '~/Downloads',
+      task: 'My disk is almost full. Look through ~/Downloads for clutter: old installers (.dmg, .pkg), duplicate files (like "report (1).pdf"), and anything over 500 MB that looks like a leftover. Move (never delete) the obvious junk into a new folder called "Safe to Delete" inside Downloads so I can review it later. Leave anything personal or important where it is. When done, tell me how much space is now in the "Safe to Delete" folder and list its biggest files.' },
+    { id: 'desktop', name: 'Desktop overview', label: 'Desktop overview', dir: '~/Desktop',
+      task: 'Look at everything on my Desktop and write a plain-English guide called "Desktop Guide.md" in that folder. Cover: what is there grouped by type, the biggest files, anything old or duplicated, and how I could tidy it up. Do not move, rename or delete anything. Put a short version of the guide in the answer.' },
+    { id: 'tidy', name: 'Tidy my Desktop', label: 'Tidy Desktop', dir: '~/Desktop',
+      task: 'Organize my Desktop into folders by type (Images, Documents, Videos, Music, Archives, Other). Do not touch folders that already exist. Never delete anything. List every move you made.' },
+    { id: 'sysinfo', name: 'Collect system info for IT', label: 'System info for IT', dir: '~/Desktop',
+      task: 'Collect system info for IT support. This is a read-only task: change nothing. Gather computer model, chip, RAM, macOS version and build, serial number, hostname, disk size and free space, battery health (if a laptop), and the 20 largest apps in /Applications (use system_profiler, sw_vers, df, and du as needed). Return each of these as key findings.' },
+  ];
+
+  const $ = id => document.getElementById(id);
+  const enc = encodeURIComponent;
+  const st = {
+    token: null, cfg: null, invites: [], es: null, sel: null, events: [], seen: new Set(), lastId: 0,
+    follow: true, unread: 0, loaded: false, startedAt: Date.now(), prevStatus: new Map(), notified: new Set(),
+    pendingSel: null, lastSuccess: null, wasLive: false,
+  };
+
+  // ============ icons (static trusted SVG paths only) ============
+  const IC = {
+    check: '<path d="M20 6 9 17l-5-5"/>', x: '<path d="M18 6 6 18M6 6l12 12"/>',
+    alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/>',
+    terminal: '<path d="m4 17 6-6-6-6M12 19h8"/>',
+    file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
+    chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+    send: '<path d="m22 2-7 20-4-9-9-4zM22 2 11 13"/>',
+    clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+    copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+    download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
+    bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+    logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+    external: '<path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+    chev: '<path d="m9 18 6-6-6-6"/>',
+    wrench: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z"/>',
+    user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+    info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
+    mail: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 7L2 7"/>',
+    link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+    back: '<path d="m12 19-7-7 7-7M19 12H5"/>',
+    ban: '<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>',
+    stop: '<rect x="5" y="5" width="14" height="14" rx="2"/>',
+    down: '<path d="M12 5v14M19 12l-7 7-7-7"/>',
+    xc: '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/>',
+    plus: '<path d="M5 12h14M12 5v14"/>',
+    spark: '<path d="m12 3 1.9 5.8L20 10l-6.1 1.2L12 17l-1.9-5.8L4 10l6.1-1.2zM19 15l.7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7z"/>',
+    pc: '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>',
+  };
+  function ico(name, size = 16) {
+    const s = document.createElement('span');
+    s.className = 'ico'; s.setAttribute('aria-hidden', 'true');
+    s.innerHTML = `<svg viewBox="0 0 24 24" width="${size}" height="${size}">${IC[name] || ''}</svg>`; // static constants only
+    return s;
+  }
+
+  // ============ DOM helpers ============
+  function h(tag, props, ...kids) {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(props || {})) {
+      if (v === null || v === undefined || v === false) continue;
+      if (k === 'class') n.className = v;
+      else if (k === 'dataset') Object.assign(n.dataset, v);
+      else if (k.startsWith('on') && typeof v === 'function') n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v === true ? '' : String(v));
+    }
+    for (const c of kids.flat(Infinity)) if (c !== null && c !== undefined && c !== false) n.append(c instanceof Node ? c : String(c));
+    return n;
+  }
+  function setBtn(btn, icon, text, size = 14) { btn.replaceChildren(...(icon ? [ico(icon, size)] : []), h('span', {}, text)); }
+  const fmtClock = ts => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const fmtDate = ts => new Date(ts).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+  function relTime(ts) {
+    if (!ts) return '—';
+    const d = Date.now() - ts, a = Math.abs(d) / 1000;
+    let t;
+    if (a < 45) return d >= 0 ? 'just now' : 'in a moment';
+    if (a < 3600) t = Math.round(a / 60) + ' min';
+    else if (a < 86400) t = Math.round(a / 3600) + ' h';
+    else t = Math.round(a / 86400) + ' d';
+    return d >= 0 ? t + ' ago' : 'in ' + t;
+  }
+  function fmtDur(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    if (s < 60) return s + 's';
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + 'm ' + String(s % 60).padStart(2, '0') + 's';
+    return Math.floor(m / 60) + 'h ' + String(m % 60).padStart(2, '0') + 'm';
+  }
+  const fmtNum = n => { n = Number(n) || 0; return n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e4 ? Math.round(n / 1e3) + 'k' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(n); };
+  const relSpan = (ts, cls) => h('time', { class: cls || '', dataset: { rel: ts || 0 }, title: ts ? fmtDate(ts) : '' }, relTime(ts));
+  const durSpan = s => h('span', { dataset: { start: s.started_at || 0, end: s.ended_at || 0 } }, fmtDur((s.ended_at || Date.now()) - (s.started_at || Date.now())));
+  const errMsg = (data, res) => (data && (typeof data.error === 'string' ? data.error : data.error && data.error.message)) || 'Request failed (HTTP ' + res.status + ')';
+  const alive = (s, inv) => !!inv && !TERMINAL.includes(s.status) && inv.status !== 'expired' && inv.status !== 'revoked' && !(inv.expires_at && inv.expires_at <= Date.now());
+  const findInvite = id => st.invites.find(i => i.id === id);
+  function findSession(id) {
+    for (const inv of st.invites) { const s = (inv.sessions || []).find(x => x.id === id); if (s) return { s, inv }; }
+    return null;
+  }
+  const hookName = u => { try { const hn = new URL(u).hostname; return hn === 'hooks.slack.com' ? 'Slack' : /(^|\.)discord(app)?\.com$/.test(hn) ? 'Discord' : 'Webhook'; } catch (e) { return 'Webhook'; } };
+  const machineName = s => { const m = s.machine; return m && m.hostname ? m.hostname : 'Waiting for computer'; };
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  function showErr(el, msg) { el.textContent = msg || ''; el.hidden = !msg; }
+  const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+  const lsDel = k => { try { localStorage.removeItem(k); } catch (e) {} };
+
+  // ============ tiny safe markdown renderer ============
+  // Everything is HTML-escaped first; only a fixed set of tags is ever produced.
+  function renderMarkdown(src) {
+    const stash = [];
+    const put = html => '\u0000' + (stash.push(html) - 1) + '\u0000';
+    const link = (u, inner) => '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + inner + '</a>';
+    function inline(s) {
+      s = s.replace(/`([^`\n]+)`/g, (_, c) => put('<code>' + esc(c) + '</code>'));
+      s = s.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, t, u) => put(link(u, inline(t))));
+      s = s.replace(/(^|[\s(])(https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"])/g, (_, pre, u) => pre + put(link(u, esc(u))));
+      s = esc(s);
+      s = s.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>').replace(/__([^_\n]+?)__/g, '<strong>$1</strong>')
+        .replace(/(^|[^*\w])\*([^*\s][^*\n]*?)\*(?!\*)/g, '$1<em>$2</em>')
+        .replace(/(^|[^_\w])_([^_\s][^_\n]*?)_(?![_\w])/g, '$1<em>$2</em>')
+        .replace(/~~([^~\n]+)~~/g, '<del>$1</del>');
+      return s;
+    }
+    const lines = String(src == null ? '' : src).replace(/\u0000/g, '').replace(/\r\n?/g, '\n').split('\n');
+    const reFence = /^\s*(```|~~~)/, reHead = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/, reHr = /^\s*([-*_])(\s*\1){2,}\s*$/;
+    const reUl = /^(\s*)[-*+]\s+(.*)$/, reOl = /^(\s*)\d+[.)]\s+(.*)$/, reQuote = /^\s{0,3}>\s?(.*)$/;
+    const isSep = l => l != null && l.includes('|') && l.includes('-') && /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(l);
+    const cells = l => { l = l.trim(); if (l.startsWith('|')) l = l.slice(1); if (l.endsWith('|')) l = l.slice(0, -1); return l.split('|').map(c => c.trim()); };
+    const startsBlock = (l, nxt) => reFence.test(l) || reHead.test(l) || reHr.test(l) || reUl.test(l) || reOl.test(l) || reQuote.test(l) || (l.includes('|') && isSep(nxt));
+    const out = [];
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      if (!line.trim()) { i++; continue; }
+      if (reFence.test(line)) {
+        const mark = line.trim().slice(0, 3), buf = [];
+        i++;
+        while (i < lines.length && !lines[i].trim().startsWith(mark)) buf.push(lines[i++]);
+        i++;
+        out.push('<pre><code>' + esc(buf.join('\n')) + '</code></pre>');
+        continue;
+      }
+      let m = line.match(reHead);
+      if (m) { const lv = Math.min(6, Math.max(3, m[1].length + 2)); out.push('<h' + lv + '>' + inline(m[2]) + '</h' + lv + '>'); i++; continue; }
+      if (reHr.test(line)) { out.push('<hr>'); i++; continue; }
+      if (line.includes('|') && isSep(lines[i + 1])) {
+        const head = cells(line); i += 2;
+        const rows = [];
+        while (i < lines.length && lines[i].trim() && lines[i].includes('|')) rows.push(cells(lines[i++]));
+        out.push('<table><thead><tr>' + head.map(c => '<th>' + inline(c) + '</th>').join('') + '</tr></thead><tbody>' +
+          rows.map(r => '<tr>' + head.map((_, k) => '<td>' + inline(r[k] || '') + '</td>').join('') + '</tr>').join('') + '</tbody></table>');
+        continue;
+      }
+      if (reQuote.test(line)) {
+        const buf = [];
+        while (i < lines.length && reQuote.test(lines[i])) buf.push(lines[i++].match(reQuote)[1]);
+        out.push('<blockquote>' + renderMarkdown(buf.join('\n')) + '</blockquote>');
+        continue;
+      }
+      if (reUl.test(line) || reOl.test(line)) {
+        const ordered = !reUl.test(line), items = [];
+        while (i < lines.length) {
+          const l = lines[i], mm = (ordered ? reOl : reUl).exec(l);
+          if (mm) { items.push(mm[2]); i++; }
+          else if (items.length && /^\s{2,}\S/.test(l) && !reUl.test(l) && !reOl.test(l)) { items[items.length - 1] += ' ' + l.trim(); i++; }
+          else if (items.length && (reUl.test(l) || reOl.test(l))) { const m2 = (reUl.exec(l) || reOl.exec(l)); items.push(m2[2]); i++; }
+          else break;
+        }
+        const tag = ordered ? 'ol' : 'ul';
+        out.push('<' + tag + '>' + items.map(t => '<li>' + inline(t) + '</li>').join('') + '</' + tag + '>');
+        continue;
+      }
+      const buf = [];
+      while (i < lines.length && lines[i].trim() && !(buf.length && startsBlock(lines[i], lines[i + 1]))) buf.push(inline(lines[i++].trim()));
+      out.push('<p>' + buf.join('<br>') + '</p>');
+    }
+    let html = out.join('\n'), n = 0;
+    while (/\u0000\d+\u0000/.test(html) && n++ < 8) html = html.replace(/\u0000(\d+)\u0000/g, (_, k) => stash[+k]);
+    return html;
+  }
+  function mdNode(text, cls) {
+    const d = h('div', { class: 'md ' + (cls || '') });
+    d.innerHTML = renderMarkdown(text); // safe: renderMarkdown escapes all input before adding its own tags
+    return d;
+  }
+
+  // ============ toasts, dialog, clipboard ============
+  function toast({ kind = 'ok', title, text, action, onAction, ms = 9000 }) {
+    const t = h('div', { class: 'toast ' + kind },
+      ico(kind === 'bad' ? 'alert' : kind === 'info' ? 'info' : 'check', 18),
+      h('div', { class: 'grow' },
+        h('h4', {}, title), text ? h('p', {}, text) : null,
+        action ? h('div', { class: 'acts' }, h('button', { type: 'button', class: 'btn btn-sm btn-primary', onclick: () => { onAction && onAction(); t.remove(); } }, action)) : null),
+      h('button', { type: 'button', class: 'btn btn-sm btn-ghost', 'aria-label': 'Dismiss notification', onclick: () => t.remove() }, ico('x', 14)));
+    $('toasts').append(t);
+    while ($('toasts').children.length > 4) $('toasts').firstChild.remove();
+    if (ms) setTimeout(() => t.remove(), ms);
+  }
+  function confirmDialog({ title, message, ok = 'Confirm', danger = false }) {
+    const dlg = $('dlg');
+    if (!dlg.showModal) return Promise.resolve(window.confirm(title + '\n\n' + message));
+    $('dlgTitle').textContent = title; $('dlgMsg').textContent = message;
+    const okBtn = $('dlgOk');
+    okBtn.textContent = ok;
+    okBtn.className = 'btn ' + (danger ? 'btn-danger-solid' : 'btn-primary');
+    return new Promise(res => {
+      const done = () => { dlg.removeEventListener('close', done); res(dlg.returnValue === 'ok'); };
+      dlg.returnValue = 'cancel';
+      dlg.addEventListener('close', done);
+      dlg.showModal();
+      $('dlgCancel').focus();
+    });
+  }
+  async function copyText(text) {
+    try { await navigator.clipboard.writeText(text); return true; } catch (e) {}
+    try {
+      const ta = h('textarea', { style: 'position:fixed;opacity:0;top:0;left:0', 'aria-hidden': 'true', tabindex: '-1' });
+      ta.value = text; document.body.append(ta); ta.select();
+      const ok = document.execCommand('copy'); ta.remove(); return ok;
+    } catch (e) { return false; }
+  }
+  const copyTimers = new WeakMap();
+  async function copyWithFeedback(btn, text, icon, label) {
+    const ok = await copyText(text);
+    setBtn(btn, ok ? 'check' : 'alert', ok ? 'Copied' : 'Copy failed');
+    btn.classList.toggle('is-done', ok);
+    clearTimeout(copyTimers.get(btn));
+    copyTimers.set(btn, setTimeout(() => { setBtn(btn, icon, label); btn.classList.remove('is-done'); }, 1600));
+  }
+
+  // ============ auth & API ============
+  function setConn(state, text) {
+    const c = $('conn');
+    c.hidden = false; c.dataset.state = state; $('connText').textContent = text;
+  }
+  function closeStream() { if (st.es) { st.es.close(); st.es = null; } }
+  function showAuth(msg) {
+    closeStream();
+    $('app').hidden = true; $('auth').hidden = false;
+    $('signOut').hidden = true; $('conn').hidden = true; $('notifBtn').hidden = true;
+    showErrText($('tokenErr'), msg);
+    $('tokenInput').focus();
+    document.title = 'Hired Gun: Dashboard';
+  }
+  const showErrText = (el, msg) => { el.textContent = msg || ''; };
+  function authFail() { const e = new Error('unauthorized'); e.auth = true; return e; }
+  function resetState() {
+    st.invites = []; st.sel = null; st.events = []; st.seen = new Set(); st.lastId = 0; st.loaded = false; st.prevStatus.clear();
+    $('jobs').replaceChildren(); invNodes.clear(); $('tl').replaceChildren();
+  }
+  async function api(method, path, body) {
+    if (!st.token) { showAuth(''); throw authFail(); }
+    let res;
+    try {
+      res = await fetch(path, {
+        method, cache: 'no-store',
+        headers: { Authorization: 'Bearer ' + st.token, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    } catch (e) { throw new Error('Cannot reach the server. Check your connection and try again.'); }
+    if (res.status === 401) {
+      st.token = null; lsDel(KEY); resetState();
+      showAuth('That admin token was not accepted. Check it and try again.');
+      throw authFail();
+    }
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(errMsg(data, res));
+    return data;
+  }
+  async function guard(fn, errEl) {
+    if (errEl) showErr(errEl, '');
+    try { return await fn(); } catch (e) { if (!e.auth && errEl) showErr(errEl, e.message); return null; }
+  }
+
+  // ============ boot & live updates ============
+  async function start() {
+    closeStream();
+    $('auth').hidden = true; $('app').hidden = false; $('signOut').hidden = false;
+    setConn('off', 'Connecting…');
+    try { await loadConfig(); } catch (e) { if (e.auth) return; showErr($('formErr'), e.message); }
+    lsSet(KEY, st.token);
+    try { await loadInvites(); } catch (e) { if (e.auth) return; showErr($('listErr'), e.message); }
+    updateNotifBtn();
+    connect();
+  }
+  async function loadConfig() {
+    const cfg = await api('GET', '/api/config');
+    st.cfg = cfg;
+    const opts = (cfg.model_options && cfg.model_options.length ? cfg.model_options : (cfg.models || []).map(id => ({ id, label: id, provider: id.includes('/') ? 'gateway' : 'deepseek' })));
+    const cur = (document.querySelector('input[name=model]:checked') || {}).value;
+    const want = cur && opts.some(o => o.id === cur) ? cur : (cfg.default_model || (opts[0] && opts[0].id));
+    $('models').replaceChildren(...opts.map((o, i) => h('div', { class: 'model' },
+      h('input', { class: 'sr', type: 'radio', name: 'model', id: 'm' + i, value: o.id, checked: o.id === want }),
+      h('label', { for: 'm' + i },
+        h('span', { class: 'radio' }),
+        h('span', { class: 'grow' }, h('span', { class: 'mname' }, o.label || o.id), h('br'), h('span', { class: 'mid' }, o.id)),
+        h('span', { class: 'badge' }, PROVIDER[o.provider] || o.provider || 'Custom')))));
+    const emailOk = !cfg.notifications || cfg.notifications.email !== false;
+    const em = $('fEmail');
+    em.disabled = !emailOk;
+    if (!emailOk) em.value = '';
+    $('hEmail').textContent = emailOk ? "We'll email you the summary and answer." : 'Email needs RESEND_API_KEY on the server.';
+  }
+  async function loadInvites() {
+    const r = await api('GET', '/api/invites');
+    setInvites(r.invites || []);
+    showErr($('listErr'), '');
+  }
+  function setInvites(list) {
+    for (const inv of list) for (const s of inv.sessions || []) trackSession(s, inv);
+    st.invites = list;
+    st.loaded = true;
+    schedule();
+    if (st.pendingSel && findSession(st.pendingSel)) { const id = st.pendingSel; st.pendingSel = null; selectSession(id, { scroll: true }); }
+  }
+  function connect() {
+    closeStream();
+    const es = new EventSource('/api/stream?token=' + enc(st.token));
+    st.es = es;
+    es.addEventListener('open', () => {
+      setConn('live', 'Live'); st.wasLive = true;
+      loadInvites().catch(e => { if (!e.auth) showErr($('listErr'), e.message); });
+      refreshEvents();
+    });
+    es.addEventListener('event', e => { try { onEvent(JSON.parse(e.data)); } catch (x) {} });
+    es.addEventListener('session', e => { try { onSession(JSON.parse(e.data)); } catch (x) {} });
+    es.addEventListener('invite', e => { try { onInvite(JSON.parse(e.data)); } catch (x) {} });
+    es.addEventListener('error', () => {
+      setConn('retry', 'Reconnecting…');
+      if (es.readyState !== EventSource.CLOSED) return; // the browser retries by itself
+      closeStream();
+      setTimeout(async () => { // closed for good (e.g. 401): probe, then reopen
+        if (!st.token || $('app').hidden || st.es) return;
+        try { await api('GET', '/api/config'); } catch (e) { if (e.auth) return; }
+        if (!st.es) connect();
+      }, 3000);
+    });
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && st.token && !$('app').hidden) { loadInvites().catch(() => {}); refreshEvents(); }
+  });
+  function upsertSession(s) {
+    const inv = findInvite(s.invite_id);
+    if (!inv) return null;
+    inv.sessions = inv.sessions || [];
+    const i = inv.sessions.findIndex(x => x.id === s.id);
+    if (i >= 0) inv.sessions[i] = s; else inv.sessions.push(s);
+    return inv;
+  }
+  function onSession(s) {
+    const inv = upsertSession(s);
+    if (!inv) { loadInvites().catch(() => {}); return; }
+    trackSession(s, inv);
+    schedule();
+  }
+  function onInvite(inv) {
+    const cur = findInvite(inv.id);
+    if (cur) Object.assign(cur, inv); else st.invites.unshift({ ...inv, sessions: [] });
+    schedule();
+  }
+  function onEvent(ev) { if (ev.session_id === st.sel) addEvents([ev]); }
+
+  // ============ done/failed notifications ============
+  function trackSession(s, inv) {
+    const prev = st.prevStatus.get(s.id);
+    st.prevStatus.set(s.id, s.status);
+    if (!st.loaded || st.notified.has(s.id)) return;
+    if (s.status !== 'done' && s.status !== 'failed') return;
+    const fresh = prev ? !TERMINAL.includes(prev) : (s.ended_at && s.ended_at >= st.startedAt - 2000);
+    if (!fresh) return;
+    st.notified.add(s.id);
+    const r = s.result, ok = s.status === 'done' && (!r || r.success);
+    const title = ok ? `"${inv.label}" is done` : `"${inv.label}" needs attention`;
+    const text = (r && r.summary) || s.report || s.status_text || '';
+    toast({ kind: ok ? 'ok' : 'bad', title, text, action: 'View result', onAction: () => selectSession(s.id, { scroll: true }), ms: 14000 });
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try {
+        const n = new Notification('Hired Gun: ' + title, { body: text.slice(0, 160), tag: s.id, icon: '/assets/logo.svg' });
+        n.onclick = () => { window.focus(); selectSession(s.id, { scroll: true }); n.close(); };
+      } catch (e) {}
+    }
+  }
+  function updateNotifBtn() {
+    const b = $('notifBtn');
+    const show = !!st.token && 'Notification' in window && Notification.permission === 'default';
+    b.hidden = !show;
+    if (show) setBtn(b, 'bell', 'Enable desktop notifications');
+  }
+  $('notifBtn').addEventListener('click', async () => {
+    try { await Notification.requestPermission(); } catch (e) {}
+    updateNotifBtn();
+    if (Notification.permission === 'granted') toast({ kind: 'ok', title: 'Desktop notifications on', text: "You'll be alerted when a job finishes while this page is open.", ms: 5000 });
+  });
+
+  // ============ rendering scheduler ============
+  let rt = 0;
+  function schedule() { if (!rt) rt = setTimeout(() => { rt = 0; renderAll(); }, 40); }
+  function renderAll() { renderJobs(); renderDetail(); }
+
+  // ============ jobs list ============
+  const invNodes = new Map();
+  function statusDot(status, pulse) {
+    const [, tone] = SESS[status] || ['', 'muted'];
+    return h('span', { class: 'sdot tone-' + tone + (pulse && (status === 'working' || status === 'connecting') ? ' pulse' : ''), 'aria-hidden': 'true' });
+  }
+  function sessionRow(s, inv) {
+    const [label, tone] = SESS[s.status] || [s.status, 'muted'];
+    const sel = s.id === st.sel;
+    const text = s.status_text || '';
+    return h('li', {}, h('button', {
+      type: 'button', class: 'sess', dataset: { sid: s.id, fk: 's:' + s.id }, 'aria-current': sel ? 'true' : null,
+    },
+      statusDot(s.status, true),
+      h('span', { class: 'grow' },
+        h('span', { class: 'sess-top' }, h('span', { class: 'sess-name' }, machineName(s)), h('span', { class: 'sess-st txt tone-' + tone }, label)),
+        text ? h('span', { class: 'sess-text' }, text) : null,
+        h('span', { class: 'sess-meta' }, 'Started ', relSpan(s.started_at), ` · ${s.actions || 0} actions · ${fmtNum((s.tokens_in || 0) + (s.tokens_out || 0))} tokens`))));
+  }
+  function inviteSig(inv) {
+    return JSON.stringify([inv.label, inv.task, inv.status, inv.expiry_policy, inv.expires_at, inv.redemptions, inv.notify_email, inv.notify_webhook, inv.created_at, st.sel,
+      (inv.sessions || []).map(s => [s.id, s.status, s.status_text, s.actions, s.tokens_in, s.tokens_out, s.started_at, s.machine && s.machine.hostname, s.ended_at])]);
+  }
+  function inviteCard(inv) {
+    const [label, tone] = INV[inv.status] || [inv.status, 'muted'];
+    const sessions = [...(inv.sessions || [])].sort((a, b) => (b.started_at || 0) - (a.started_at || 0));
+    const canRevoke = inv.status === 'pending' || inv.status === 'active';
+    const meta = [h('span', {}, POLICY[inv.expiry_policy] || inv.expiry_policy), h('span', {}, 'Created ', relSpan(inv.created_at))];
+    if (inv.expires_at) meta.push(h('span', {}, inv.expires_at > Date.now() ? 'Expires ' : 'Expired ', relSpan(inv.expires_at)));
+    if (inv.notify_email) meta.push(h('span', { class: 'row', style: 'gap:4px', title: 'Emails ' + inv.notify_email }, ico('mail', 12), 'Email'));
+    if (inv.notify_webhook) meta.push(h('span', { class: 'row', style: 'gap:4px' }, ico('link', 12), hookName(inv.notify_webhook)));
+    return h('article', { class: 'job', dataset: { iid: inv.id } },
+      h('div', { class: 'job-head' }, h('h3', { class: 'job-title' }, inv.label || '(no label)'), h('span', { class: 'pill tone-' + tone }, label)),
+      h('div', { class: 'job-meta' }, meta.flatMap((m, i) => i ? [h('span', { class: 'sep', 'aria-hidden': 'true' }, '·'), m] : [m])),
+      h('p', { class: 'job-task' }, inv.task),
+      sessions.length ? h('ul', { class: 'sess-list' }, sessions.map(s => sessionRow(s, inv)))
+        : h('p', { class: 'job-wait' }, ico('clock', 13), inv.status === 'pending' ? 'Waiting for someone to enter the code…' : 'No one connected.'),
+      canRevoke ? h('div', { class: 'job-foot' }, h('button', { type: 'button', class: 'btn btn-sm btn-danger', dataset: { revoke: inv.id, fk: 'r:' + inv.id }, 'aria-label': `Revoke ${inv.label}` }, ico('ban', 13), 'Revoke')) : null);
+  }
+  function emptyJobs() {
+    return h('div', { class: 'empty' },
+      h('h3', {}, 'No jobs yet. Nobody’s been hired.'),
+      h('ol', { class: 'steps' },
+        h('li', {}, h('span', { class: 'n' }, '1'), h('div', {}, h('b', {}, 'Create a job'), h('span', {}, 'Describe what you need done, pick a model, and get a one-time code.'))),
+        h('li', {}, h('span', { class: 'n' }, '2'), h('div', {}, h('b', {}, 'Send the code'), h('span', {}, 'The person opens Terminal and pastes one line. They need a Mac with Node.js 22+ (free from nodejs.org).'))),
+        h('li', {}, h('span', { class: 'n' }, '3'), h('div', {}, h('b', {}, 'Watch it work'), h('span', {}, 'See every step live, steer it with instructions, and get the result here (or by email).')))));
+  }
+  function renderJobs() {
+    const root = $('jobs');
+    $('jobsCount').textContent = st.invites.length;
+    if (!st.invites.length) {
+      invNodes.clear();
+      if (!root.querySelector('.empty')) root.replaceChildren(emptyJobs());
+      return;
+    }
+    root.querySelector('.empty, .jobs-loading') && root.replaceChildren();
+    const want = [], ids = new Set();
+    for (const inv of st.invites) {
+      ids.add(inv.id);
+      const sig = inviteSig(inv);
+      let rec = invNodes.get(inv.id);
+      if (!rec || rec.sig !== sig) {
+        const fk = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.fk;
+        const hadFocus = rec && fk && rec.el.contains(document.activeElement);
+        const el = inviteCard(inv);
+        if (rec && rec.el.parentNode === root) root.replaceChild(el, rec.el);
+        rec = { sig, el }; invNodes.set(inv.id, rec);
+        if (hadFocus) { const t = el.querySelector(`[data-fk="${CSS.escape(fk)}"]`); if (t) t.focus(); }
+      }
+      want.push(rec.el);
+    }
+    for (const [id, rec] of [...invNodes]) if (!ids.has(id)) { rec.el.remove(); invNodes.delete(id); }
+    want.forEach((el, i) => { if (root.children[i] !== el) root.insertBefore(el, root.children[i] || null); });
+  }
+  $('jobs').addEventListener('click', async e => {
+    const rv = e.target.closest('[data-revoke]');
+    if (rv) {
+      const inv = findInvite(rv.dataset.revoke);
+      if (!inv) return;
+      const ok = await confirmDialog({ title: `Revoke "${inv.label}"?`, message: 'The code will stop working right away and any running session from this job will be stopped.', ok: 'Revoke job', danger: true });
+      if (!ok) return;
+      const r = await guard(() => api('POST', `/api/invites/${enc(inv.id)}/revoke`), $('listErr'));
+      if (r) { inv.status = 'revoked'; for (const s of inv.sessions || []) if (!TERMINAL.includes(s.status)) s.status = 'killed'; toast({ kind: 'info', title: 'Job revoked', text: inv.label, ms: 4000 }); schedule(); }
+      return;
+    }
+    const row = e.target.closest('[data-sid]');
+    if (row) selectSession(row.dataset.sid, { scroll: true });
+  });
+
+  // ============ session selection ============
+  function setHash(id) {
+    try { history.replaceState(null, '', id ? '#session=' + enc(id) : location.pathname + location.search); } catch (e) {}
+  }
+  function parseHash() { const m = location.hash.match(/session=([^&]+)/); if (!m) return null; try { return decodeURIComponent(m[1]); } catch (e) { return null; } }
+  async function selectSession(sid, opts) {
+    if (!findSession(sid)) { st.pendingSel = sid; return; }
+    const same = st.sel === sid;
+    st.sel = sid; setHash(sid);
+    if (!same) { st.events = []; st.seen = new Set(); st.lastId = 0; st.follow = true; st.unread = 0; resetTimeline(); lastResultSig = ''; }
+    renderAll();
+    if (opts && opts.scroll && window.matchMedia('(max-width: 960px)').matches) $('detail').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (same) return;
+    const r = await guard(() => api('GET', `/api/sessions/${enc(sid)}/events`), null);
+    if (r && st.sel === sid) addEvents(r.events || [], true);
+  }
+  function closeSession() { st.sel = null; setHash(null); renderAll(); }
+  async function refreshEvents() {
+    const sid = st.sel;
+    if (!sid) return;
+    const r = await guard(() => api('GET', `/api/sessions/${enc(sid)}/events?after=${enc(st.lastId)}`), null);
+    if (r && st.sel === sid) addEvents(r.events || []);
+  }
+  window.addEventListener('hashchange', () => { const id = parseHash(); if (id && id !== st.sel) selectSession(id, { scroll: true }); else if (!id && st.sel) closeSession(); });
+
+  // ============ session detail ============
+  let lastResultSig = '';
+  function renderDetail() {
+    const f = st.sel && findSession(st.sel);
+    if (!f && st.sel) { st.sel = null; setHash(null); }
+    const has = !!(st.sel && f);
+    $('detail').hidden = !has; $('detailEmpty').hidden = has;
+    if (!has) return;
+    const { s, inv } = f, m = s.machine || {}, isAlive = alive(s, inv);
+    const [slabel, stone] = SESS[s.status] || [s.status, 'muted'];
+    $('dTitle').textContent = m.hostname || inv.label;
+    $('dSub').textContent = [`Job “${inv.label}”`, m.username && `user ${m.username}`, m.platform && `${m.platform}${m.release ? ' ' + m.release : ''} ${m.arch || ''}`.trim(), inv.working_dir].filter(Boolean).join(' · ');
+    document.title = `${m.hostname || inv.label} · Hired Gun`;
+    $('dStatus').replaceChildren(...[
+      statusDot(s.status, true), h('b', { class: 'txt tone-' + stone }, slabel),
+      s.status_text ? h('span', { class: 'muted' }, '— ' + s.status_text) : null,
+      isAlive && s.last_heartbeat ? h('span', { class: 'faint small' }, '· seen ', relSpan(s.last_heartbeat)) : null].filter(Boolean));
+    const stat = (k, v) => h('div', { class: 'stat' }, h('div', { class: 'k' }, k), h('div', { class: 'v' }, v));
+    $('dStats').replaceChildren(
+      stat('Status', [statusDot(s.status), slabel]), stat('Duration', durSpan(s)),
+      stat('Actions', String(s.actions || 0)), stat('Tokens', `${fmtNum(s.tokens_in)} in · ${fmtNum(s.tokens_out)} out`));
+    $('dStop').hidden = !isAlive;
+    $('instrBox').hidden = !isAlive;
+    renderResult(f);
+  }
+  function currentResult(s) {
+    if (s.result) return s.result;
+    const rep = [...st.events].reverse().find(e => e.type === 'report');
+    if (rep && rep.data) {
+      if (rep.data.result) return rep.data.result;
+      return { success: !!rep.data.success, summary: rep.data.text || '', answer: null, findings: [], changes: [] };
+    }
+    if (s.report && TERMINAL.includes(s.status)) return { success: s.status === 'done', summary: s.report, answer: null, findings: [], changes: [] };
+    if (s.status === 'failed') return { success: false, summary: s.status_text || 'The session ended before the agent could report back.', answer: null, findings: [], changes: [] };
+    return null;
+  }
+  function notifyLines(inv, s) {
+    const evs = st.events.filter(e => e.type === 'notification' && e.data);
+    const lines = evs.map(e => {
+      const d = e.data, name = d.channel === 'email' ? 'Email' : hookName(inv.notify_webhook || '') + ' webhook';
+      if (d.ok) {
+        const who = d.channel === 'email' ? 'Emailed ' + (inv.notify_email || '') : name.replace(' webhook', '') === 'Webhook' ? 'Webhook delivered' : name + ' notified';
+        return h('div', { class: 'ok' }, ico('check', 14), h('span', {}, who.trim(), d.detail && d.channel !== 'email' ? ' · ' + d.detail : '', d.channel === 'email' && d.detail && d.detail !== inv.notify_email ? ' · ' + d.detail : ''));
+      }
+      return h('div', { class: 'bad' }, ico('xc', 14), h('span', {}, `${name} failed: ${d.detail || 'unknown error'}`));
+    });
+    if (!lines.length && (inv.notify_email || inv.notify_webhook) && s.ended_at && Date.now() - s.ended_at < 90000 && s.status !== 'killed') {
+      lines.push(h('div', { class: 'muted' }, ico('clock', 14), h('span', {}, 'Sending notifications…')));
+    }
+    return lines;
+  }
+  function renderResult(f) {
+    f = f || (st.sel && findSession(st.sel));
+    const box = $('dResult');
+    if (!f) { box.hidden = true; return; }
+    const { s, inv } = f, r = currentResult(s);
+    const notes = notifyLines(inv, s);
+    const sig = JSON.stringify([s.id, r, notes.map(n => n.textContent), !!inv.notify_email]);
+    if (sig === lastResultSig) return;
+    lastResultSig = sig;
+    box.hidden = !r;
+    if (!r) return;
+    const parts = [];
+    parts.push(h('div', { class: 'banner ' + (r.success ? 'ok' : 'bad'), role: 'status' },
+      h('span', { class: 'ring' }, ico(r.success ? 'check' : 'x', 16)),
+      h('div', { class: 'grow' }, h('h3', {}, r.success ? 'Job done' : 'Job didn’t finish'), h('p', {}, r.summary || ''))));
+    if (r.answer) parts.push(h('div', { class: 'r-sec' }, h('h4', {}, 'Answer'), h('div', { class: 'answer' }, mdNode(r.answer))));
+    if (r.findings && r.findings.length) {
+      parts.push(h('div', { class: 'r-sec' }, h('h4', {}, 'Key findings'),
+        h('div', { class: 'kv-wrap' }, h('table', { class: 'kv' }, h('tbody', {}, r.findings.map(x => h('tr', {}, h('th', { scope: 'row' }, x.label), h('td', {}, x.value))))))));
+    }
+    if (r.changes && r.changes.length) {
+      parts.push(h('div', { class: 'r-sec' }, h('h4', {}, `Changes made (${r.changes.length})`), h('ul', { class: 'changes' }, r.changes.map(c => h('li', {}, ico('check', 14), h('span', {}, c))))));
+    }
+    const copyBtn = h('button', { type: 'button', class: 'btn btn-sm' }), dlBtn = h('button', { type: 'button', class: 'btn btn-sm' });
+    setBtn(copyBtn, 'copy', 'Copy answer', 14); setBtn(dlBtn, 'download', 'Download report (.md)', 14);
+    copyBtn.addEventListener('click', () => copyWithFeedback(copyBtn, r.answer || r.summary || '', 'copy', 'Copy answer'));
+    dlBtn.addEventListener('click', () => downloadReport(s, inv, r));
+    parts.push(h('div', { class: 'r-sec' },
+      h('div', { class: 'actions-row' }, copyBtn, dlBtn),
+      notes.length ? h('div', { class: 'notes', 'aria-label': 'Notification delivery' }, notes) : null));
+    box.replaceChildren(...parts);
+  }
+  function reportMarkdown(s, inv, r) {
+    const m = s.machine || {};
+    const L = [`# ${inv.label}: ${r.success ? 'completed' : 'did not finish'}`, ''];
+    L.push(`- Computer: ${m.hostname || 'unknown'}${m.username ? ' (' + m.username + ')' : ''}`);
+    L.push(`- Model: ${inv.model}`, `- Started: ${s.started_at ? fmtDate(s.started_at) : 'n/a'}`);
+    if (s.ended_at) L.push(`- Ended: ${fmtDate(s.ended_at)} (${fmtDur(s.ended_at - s.started_at)})`);
+    L.push('', '## Task', '', inv.task, '', '## Summary', '', r.summary || '');
+    if (r.answer) L.push('', '## Answer', '', r.answer);
+    if (r.findings && r.findings.length) {
+      L.push('', '## Key findings', '', '| Finding | Value |', '| --- | --- |');
+      for (const x of r.findings) L.push(`| ${String(x.label).replace(/\|/g, '\\|')} | ${String(x.value).replace(/\|/g, '\\|').replace(/\n/g, ' ')} |`);
+    }
+    if (r.changes && r.changes.length) { L.push('', '## Changes made', ''); for (const c of r.changes) L.push('- ' + c); }
+    return L.join('\n') + '\n';
+  }
+  function downloadReport(s, inv, r) {
+    const name = (inv.label || 'report').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'report';
+    const url = URL.createObjectURL(new Blob([reportMarkdown(s, inv, r)], { type: 'text/markdown;charset=utf-8' }));
+    const a = h('a', { href: url, download: `hired-gun-${name}.md` });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+
+  // ============ timeline ============
+  const TOOL_LABEL = { bash: 'Ran command', read: 'Read file', write: 'Wrote file', edit: 'Edited file', submit_report: 'Submitted report' };
+  let pendingCalls = new Map();
+  function resetTimeline() {
+    pendingCalls = new Map();
+    $('tl').replaceChildren();
+    $('tlCount').textContent = '0';
+    $('jump').hidden = true;
+    showErr($('instrErr'), '');
+  }
+  function argPreview(a) {
+    if (a == null) return '';
+    if (typeof a !== 'object') return String(a);
+    const v = a.command ?? a.path ?? a.file_path;
+    return v != null ? String(v) : JSON.stringify(a);
+  }
+  const clip = (t, n) => { t = t == null ? '' : typeof t === 'string' ? t : JSON.stringify(t, null, 2); return t.length > n ? t.slice(0, n) + '\n… (truncated)' : t; };
+  function evRow(type, iconName, iconCls, who, ts, body, cls) {
+    return h('div', { class: 'ev ' + type + (cls ? ' ' + cls : '') },
+      h('span', { class: 'ev-ico ' + iconCls }, ico(iconName, 14)),
+      h('div', { class: 'ev-body' }, h('div', { class: 'ev-meta' }, h('b', {}, who), h('time', { title: fmtDate(ts) }, fmtClock(ts))), body));
+  }
+  function toolState(ok) {
+    return ok === undefined ? h('span', { class: 'tool-state run' }, 'running…')
+      : h('span', { class: 'tool-state ' + (ok ? 'ok' : 'bad') }, ico(ok ? 'check' : 'x', 12), ok ? 'ok' : 'failed');
+  }
+  function toolDetails(tool, argsPreview, argsFull, ts) {
+    const stateSlot = h('span', {});
+    stateSlot.append(toolState(undefined));
+    const bodyOut = h('div', {});
+    const d = h('details', { class: 'tool' },
+      h('summary', {}, h('span', { class: 'chev' }, ico('chev', 14)), h('span', { class: 'tool-name' }, TOOL_LABEL[tool] || tool || 'tool'),
+        h('span', { class: 'tool-arg' }, argsPreview), stateSlot),
+      h('div', { class: 'tool-body' }, h('h5', {}, 'Input'), h('pre', {}, clip(argsFull, 4000)), bodyOut));
+    return { d, stateSlot, bodyOut };
+  }
+  function appendTimeline(ev) {
+    const tl = $('tl'), d = ev.data || {};
+    tl.querySelector('.tl-empty') && tl.replaceChildren();
+    let row = null;
+    switch (ev.type) {
+      case 'status':
+        row = evRow('status', 'info', '', 'Status', ev.ts, h('div', { class: 'ev-status' }, [d.status, d.text].filter(Boolean).join(' · ')));
+        break;
+      case 'assistant':
+        row = evRow('assistant', 'spark', 'assistant', 'Agent', ev.ts, h('div', { class: 'ev-text' }, mdNode(d.text || '')));
+        break;
+      case 'tool_call': {
+        const t = toolDetails(d.tool, argPreview(d.args), d.args, ev.ts);
+        const q = pendingCalls.get(d.tool) || []; q.push(t); pendingCalls.set(d.tool, q);
+        row = evRow('tool_call', d.tool === 'bash' ? 'terminal' : 'wrench', 'tool', 'Tool', ev.ts, t.d);
+        break;
+      }
+      case 'tool_result': {
+        const q = pendingCalls.get(d.tool), t = q && q.shift();
+        const out = d.output == null ? '' : String(d.output);
+        if (t) {
+          t.stateSlot.replaceChildren(toolState(!!d.ok));
+          if (out) t.bodyOut.replaceChildren(h('h5', {}, 'Output'), h('pre', {}, clip(out, 4000)));
+          if (!d.ok) t.d.open = false;
+          row = null;
+        } else {
+          const t2 = toolDetails(d.tool, out.split('\n').find(l => l.trim()) || '(no output)', '', ev.ts);
+          t2.stateSlot.replaceChildren(toolState(!!d.ok));
+          t2.d.querySelector('.tool-body').replaceChildren(h('h5', {}, 'Output'), h('pre', {}, clip(out, 4000)));
+          row = evRow('tool_call', 'wrench', 'tool', 'Tool result', ev.ts, t2.d);
+        }
+        break;
+      }
+      case 'instruction':
+        row = evRow('instruction', 'user', 'instruction', 'You sent an instruction', ev.ts, h('div', { class: 'ev-text' }, d.text || ''));
+        break;
+      case 'error':
+        row = evRow('error', 'alert', 'error', 'Error', ev.ts, h('div', { class: 'ev-text' }, d.message || 'Unknown error'));
+        break;
+      case 'report': {
+        const r = d.result;
+        row = evRow('report', d.success === false ? 'x' : 'check', 'report', d.success === false ? 'Finished with problems' : 'Finished', ev.ts,
+          h('div', { class: 'ev-text' }, (r && r.summary) || d.text || ''), d.success === false ? 'fail' : '');
+        break;
+      }
+      case 'notification': {
+        const ok = d.ok !== false;
+        row = evRow('status', ok ? 'mail' : 'alert', ok ? 'report' : 'error', 'Notification', ev.ts,
+          h('div', { class: 'ev-status' }, `${d.channel === 'email' ? 'Email' : 'Webhook'} ${ok ? 'sent' : 'failed'}${d.detail ? ': ' + d.detail : ''}`));
+        break;
+      }
+      default:
+        row = evRow('status', 'info', '', ev.type, ev.ts, h('div', { class: 'ev-status' }, clip(d, 300)));
+    }
+    if (row) tl.append(row);
+  }
+  function rebuildTimeline() {
+    pendingCalls = new Map();
+    const tl = $('tl');
+    tl.replaceChildren();
+    for (const ev of st.events) appendTimeline(ev);
+  }
+  function addEvents(list, initial) {
+    const fresh = [];
+    let ooo = false;
+    for (const ev of list) {
+      if (st.seen.has(ev.id)) continue;
+      st.seen.add(ev.id);
+      const n = Number(ev.id);
+      const last = st.events.length ? Number(st.events[st.events.length - 1].id) : -Infinity;
+      if (n < last) ooo = true;
+      st.events.push(ev); fresh.push(ev);
+      st.lastId = Number.isFinite(n) ? Math.max(Number(st.lastId) || 0, n) : ev.id;
+    }
+    const tl = $('tl');
+    if (!fresh.length) {
+      if (initial && !tl.childElementCount) tl.append(h('div', { class: 'tl-empty' }, 'Waiting for activity…'));
+      return;
+    }
+    if (ooo) { st.events.sort((a, b) => Number(a.id) - Number(b.id)); rebuildTimeline(); }
+    else for (const ev of fresh) appendTimeline(ev);
+    $('tlCount').textContent = st.events.length;
+    if (st.follow || initial) { st.follow = true; st.unread = 0; requestAnimationFrame(() => { tl.scrollTop = tl.scrollHeight; }); }
+    else st.unread += fresh.length;
+    updateJump();
+    if (fresh.some(e => e.type === 'report' || e.type === 'notification')) { lastResultSig = ''; renderDetail(); }
+  }
+  function updateJump() {
+    const j = $('jump');
+    j.hidden = st.follow;
+    if (!st.follow) setBtn(j, 'down', st.unread ? `${st.unread} new — jump to latest` : 'Jump to latest', 14);
+    $('tlFollow').textContent = st.follow ? 'Following live' : 'Paused';
+  }
+  $('tl').addEventListener('scroll', () => {
+    const tl = $('tl');
+    const near = tl.scrollHeight - tl.scrollTop - tl.clientHeight < 48;
+    if (near !== st.follow) { st.follow = near; if (near) st.unread = 0; updateJump(); }
+  }, { passive: true });
+  $('jump').addEventListener('click', () => { const tl = $('tl'); st.follow = true; st.unread = 0; tl.scrollTop = tl.scrollHeight; updateJump(); });
+
+  // ============ detail actions ============
+  $('dClose').addEventListener('click', closeSession);
+  $('dBack').addEventListener('click', () => { closeSession(); $('jobsTitle').scrollIntoView({ behavior: 'smooth' }); });
+  $('dStop').addEventListener('click', async () => {
+    const sid = st.sel, f = sid && findSession(sid);
+    if (!f) return;
+    const ok = await confirmDialog({ title: 'Stop this session?', message: 'The agent will be stopped right away and will not finish the job. Changes it already made stay in place.', ok: 'Stop session', danger: true });
+    if (!ok) return;
+    const r = await guard(() => api('POST', `/api/sessions/${enc(sid)}/kill`), $('instrErr'));
+    if (r) toast({ kind: 'info', title: 'Stop requested', text: 'The agent will stop on its next check-in.', ms: 4000 });
+  });
+  $('instrForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const sid = st.sel, text = $('instrText').value.trim();
+    if (!sid || !text) { showErr($('instrErr'), 'Type an instruction first.'); return; }
+    $('instrBtn').disabled = true;
+    const r = await guard(() => api('POST', `/api/sessions/${enc(sid)}/instructions`, { text }), $('instrErr'));
+    $('instrBtn').disabled = false;
+    if (r) { $('instrText').value = ''; st.follow = true; }
+  });
+
+  // ============ new job form ============
+  function renderTemplates() {
+    $('tpls').replaceChildren(...TEMPLATES.map(t => h('button', { type: 'button', class: 'chip', dataset: { tpl: t.id }, 'aria-pressed': 'false' }, ico('spark', 13), t.name)));
+  }
+  function applyTemplate(t) {
+    $('fLabel').value = t.label; $('fTask').value = t.task; $('fDir').value = t.dir;
+    markTemplate();
+    for (const id of ['eLabel', 'eTask']) $(id).textContent = '';
+    $('fLabel').removeAttribute('aria-invalid'); $('fTask').removeAttribute('aria-invalid');
+    $('fTask').focus({ preventScroll: true });
+  }
+  function markTemplate() {
+    const t = TEMPLATES.find(x => x.task === $('fTask').value && x.label === $('fLabel').value);
+    document.querySelectorAll('#tpls .chip').forEach(c => c.setAttribute('aria-pressed', String(!!t && c.dataset.tpl === t.id)));
+  }
+  $('tpls').addEventListener('click', e => { const b = e.target.closest('[data-tpl]'); if (b) applyTemplate(TEMPLATES.find(t => t.id === b.dataset.tpl)); });
+  $('fTask').addEventListener('input', markTemplate);
+  $('fLabel').addEventListener('input', markTemplate);
+
+  function curPolicy() { return (document.querySelector('input[name=policy]:checked') || {}).value || 'one_use'; }
+  function syncPolicy() {
+    const p = curPolicy();
+    $('policyHelp').replaceChildren(ico('info', 14), h('span', {}, POLICY_HELP[p]));
+    $('ttlRow').hidden = p !== 'ttl';
+  }
+  $('policySeg').addEventListener('change', syncPolicy);
+  document.querySelector('#ttlRow .chips').addEventListener('click', e => { const b = e.target.closest('[data-ttl]'); if (b) $('fTtl').value = b.dataset.ttl; });
+
+  function fieldErr(inputId, errId, msg) {
+    $(errId).textContent = msg || '';
+    const inp = $(inputId);
+    if (msg) inp.setAttribute('aria-invalid', 'true'); else inp.removeAttribute('aria-invalid');
+    return !!msg;
+  }
+  const validEmail = v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+  function validHook(v) {
+    try { const u = new URL(v); return u.protocol === 'https:' || (u.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(u.hostname)); } catch (e) { return false; }
+  }
+  function collect() {
+    const body = {
+      label: $('fLabel').value.trim(), task: $('fTask').value.trim(), working_dir: $('fDir').value.trim() || '~/Desktop',
+      model: (document.querySelector('input[name=model]:checked') || {}).value || undefined, expiry_policy: curPolicy(),
+      notify_email: $('fEmail').disabled ? null : ($('fEmail').value.trim() || null),
+      notify_webhook: $('fHook').value.trim() || null,
+    };
+    const errs = [];
+    if (fieldErr('fLabel', 'eLabel', body.label ? '' : 'Give the job a short label.')) errs.push('fLabel');
+    if (fieldErr('fTask', 'eTask', !body.task ? 'Describe what the agent should do.' : body.task.length < 10 ? 'Add a bit more detail so the agent knows what to do.' : '')) errs.push('fTask');
+    if (body.expiry_policy === 'ttl') {
+      body.ttl_hours = Number($('fTtl').value);
+      if (fieldErr('fTtl', 'eTtl', Number.isFinite(body.ttl_hours) && body.ttl_hours >= 1 ? '' : 'Enter a whole number of hours, 1 or more.')) errs.push('fTtl');
+    } else fieldErr('fTtl', 'eTtl', '');
+    if (fieldErr('fEmail', 'eEmail', body.notify_email && !validEmail(body.notify_email) ? "That doesn't look like an email address." : '')) errs.push('fEmail');
+    if (fieldErr('fHook', 'eHook', body.notify_webhook && !validHook(body.notify_webhook) ? 'Use a full https:// URL.' : '')) errs.push('fHook');
+    return { body, errs };
+  }
+  $('newForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    showErr($('formErr'), '');
+    const { body, errs } = collect();
+    if (errs.length) { $(errs[0]).focus(); return; }
+    const btn = $('newBtn');
+    btn.disabled = true; setBtn(btn, null, 'Creating…');
+    const r = await create(body);
+    btn.disabled = false; setBtn(btn, null, 'Create job and get code');
+    if (!r) return;
+    onInvite(r.invite);
+    showSuccess(r, body.label);
+    $('fLabel').value = ''; markTemplate();
+  });
+  async function create(body) {
+    try { return await api('POST', '/api/invites', body); }
+    catch (e) {
+      if (e.auth) return null;
+      showErr($('formErr'), e.message);
+      const m = e.message.toLowerCase();
+      if (m.includes('email')) fieldErr('fEmail', 'eEmail', e.message);
+      else if (m.includes('webhook')) fieldErr('fHook', 'eHook', e.message);
+      else if (m.includes('label')) fieldErr('fLabel', 'eLabel', e.message);
+      else if (m.includes('task')) fieldErr('fTask', 'eTask', e.message);
+      return null;
+    }
+  }
+  function showSuccess(r, label) {
+    const code = r.code, cmd = r.command || ('npx gigagent ' + code);
+    const msg = `Hi! I’m sending a helper called Hired Gun to do a quick job on your Mac. Open Terminal and paste this line:\n${cmd}\n(Tip: press ⌘ Space, type “Terminal”, press Enter, then paste and press Enter.)\nIf it says “command not found”, install Node.js from nodejs.org first.`;
+    st.lastSuccess = { code, cmd, msg };
+    $('succSub').textContent = `Send this to whoever will run “${label}”. Their session shows up under Jobs when they do.`;
+    $('succCode').textContent = code; $('succCmd').textContent = cmd; $('succMsg').textContent = msg;
+    setBtn($('copyCode'), 'copy', 'Copy code'); setBtn($('copyCmd'), 'copy', 'Copy command'); setBtn($('copyMsg'), 'copy', 'Copy message');
+    $('succIcon').replaceChildren(ico('check', 16));
+    $('success').hidden = false;
+    $('success').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    $('succTitle').focus({ preventScroll: true });
+  }
+  $('copyCode').addEventListener('click', () => st.lastSuccess && copyWithFeedback($('copyCode'), st.lastSuccess.code, 'copy', 'Copy code'));
+  $('copyCmd').addEventListener('click', () => st.lastSuccess && copyWithFeedback($('copyCmd'), st.lastSuccess.cmd, 'copy', 'Copy command'));
+  $('copyMsg').addEventListener('click', () => st.lastSuccess && copyWithFeedback($('copyMsg'), st.lastSuccess.msg, 'copy', 'Copy message'));
+  $('succClose').addEventListener('click', () => { $('success').hidden = true; st.lastSuccess = null; });
+
+  // ============ sign in / out ============
+  $('tokenShow').addEventListener('click', () => {
+    const i = $('tokenInput'), show = i.type === 'password';
+    i.type = show ? 'text' : 'password';
+    $('tokenShow').textContent = show ? 'Hide' : 'Show'; $('tokenShow').setAttribute('aria-pressed', String(show));
+  });
+  $('tokenForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const t = $('tokenInput').value.trim();
+    if (!t) { showErrText($('tokenErr'), 'Paste your admin token to continue.'); return; }
+    showErrText($('tokenErr'), '');
+    resetState();
+    st.token = t;
+    $('tokenInput').value = '';
+    start();
+  });
+  $('signOut').addEventListener('click', () => {
+    st.token = null; lsDel(KEY); lsDel(OLD_KEY); resetState(); st.sel = null; setHash(null);
+    showAuth('');
+  });
+
+  // ============ live clocks ============
+  setInterval(() => {
+    const now = Date.now();
+    document.querySelectorAll('time[data-rel]').forEach(n => { const t = relTime(+n.dataset.rel); if (n.textContent !== t) n.textContent = t; });
+    document.querySelectorAll('[data-start]').forEach(n => {
+      if (+n.dataset.end) return;
+      const t = fmtDur(now - +n.dataset.start); if (n.textContent !== t) n.textContent = t;
+    });
+  }, 1000);
+
+  // ============ init ============
+  function initStatic() {
+    setBtn($('homeLink'), 'external', 'Website', 14);
+    const so = $('signOut');
+    so.replaceChildren(ico('logout', 14), h('span', { class: 'full-lbl' }, 'Sign out / change token'), h('span', { class: 'short-lbl' }, 'Sign out'));
+    so.title = 'Sign out / change token';
+    $('succClose').replaceChildren(ico('x', 14));
+    $('dBack').replaceChildren(ico('back', 14), h('span', {}, 'Jobs'));
+    $('dClose').replaceChildren(ico('x', 14));
+    setBtn($('dStop'), 'stop', 'Stop', 13);
+    setBtn($('instrBtn'), 'send', 'Send', 14);
+    $('emptyIcon').replaceChildren(ico('pc', 22));
+    renderTemplates(); syncPolicy();
+  }
+  initStatic();
+  st.pendingSel = parseHash();
+  const saved = lsGet(KEY) || lsGet(OLD_KEY);
+  if (saved) { st.token = saved; start(); } else showAuth('');
+})();
+</script>
+</body>
+</html>

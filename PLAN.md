@@ -1,220 +1,102 @@
-# gig-slave — Architecture & Build Plan (demo-ready v0)
+# Hired Gun: Architecture
 
-> **Decisions locked (2026-10-11):** macOS only for v0 · server exposed via Cloudflare Tunnel · CLI published to npm as `gig-slave` · no email in v0 (copy code from dashboard) · models: `deepseek-flash` (default) and `deepseek-v4-pro` via the DeepSeek API · Pi SDK `@mariozechner/pi-coding-agent@0.73.1`.
+> **Decisions (2026-10-14, renamed 2026-10-16):** product name **Hired Gun** (formerly GigAgent, formerly gig-slave; identifiers keep `gigagent`, see DESIGN.md) · CLI package `gigagent`, run as `npx gigagent` · macOS only for the CLI · server deploys to **Vercel** (root directory `server`) with **Postgres** (Neon) via `DATABASE_URL`; embedded PGlite locally and in e2e · models through **Vercel AI Gateway** for ids with `/` (default `anthropic/claude-haiku-5.5`), bare ids go direct to DeepSeek · jobs end with a structured **Result** (via the agent's `submit_report` tool) shown on the dashboard and sent by email (Resend, optional) and/or webhook · Pi SDK `@mariozechner/pi-coding-agent@0.73.1` · a Cloudflare tunnel + Worker remain as a self-hosting option.
+
+CONTRACT.md is the binding reference for routes, shapes and env vars. This file explains why the pieces are shaped the way they are.
 
 ## 1. What it is
 
-A one-shot, zero-config remote agent. You (the operator) issue an "agent invite" from a dashboard. The recipient (dad, a new employee, whoever) runs one command:
+An operator (you) creates an **invite** for a job on a dashboard. The person at the computer runs one command and types the code:
 
 ```
-npx gig-slave
+npx gigagent ABCD-EFGH
 ```
 
-…types the code from the email, and watches a status screen while a headless Pi coding agent does the task on their machine. You watch progress live on your dashboard, can send follow-up instructions, and get a report when it's done. Then it cleans itself up.
+A headless Pi coding agent then does the job on their Mac while the operator watches live, can send follow-up instructions or stop it, and gets a structured report when it ends. The CLI then removes its temporary files.
 
 **Demo task:** "Organize my Desktop into folders by type."
 
-**Non-goals for v0:** hardened security, sandboxing, multi-tenant accounts, Windows-specific polish beyond basic path handling.
-
----
+**Non-goals for now:** hardened security, sandboxing, multi-tenant accounts, Windows support.
 
 ## 2. Components
 
 ```
-┌──────────────────────┐        HTTPS         ┌───────────────────────────────┐        HTTPS        ┌─────────────┐
-│  gig-slave CLI         │ ───────────────────▶ │  control-server               │ ──────────────────▶ │ DeepSeek  │
-│  (recipient machine) │  redeem / events /   │  - Admin API + dashboard      │  real API key lives │ (any OpenAI │
-│  Pi SDK, no TUI      │  heartbeat / poll    │  - Agent API                  │  ONLY here          │  compatible)│
-│                      │ ◀─────────────────── │  - /v1 inference proxy        │                     └─────────────┘
-└──────────────────────┘  tasks / kill        │  - SQLite                     │
-                                              │  - Email (Resend, optional)   │
-                         ┌────────────────┐   │                               │
-                         │ Dashboard (you)│◀──┤  SSE live events              │
-                         └────────────────┘   └───────────────────────────────┘
+┌──────────────────────┐   HTTPS    ┌──────────────────────────────────┐   HTTPS   ┌──────────────────────┐
+│  gigagent CLI        │ ─────────▶ │  server (Vercel, Hono)           │ ────────▶ │ AI Gateway (ids "/") │
+│  (recipient's Mac)   │ redeem /   │  - landing page  (/)             │           ├──────────────────────┤
+│  Pi SDK, status UI   │ events /   │  - dashboard     (/dashboard)    │ ────────▶ │ DeepSeek direct      │
+│                      │ heartbeat  │  - admin API    (/api, token)    │  real     │ (bare ids)           │
+│                      │ ◀───────── │  - agent API    (/agent)         │  keys     └──────────────────────┘
+│                      │ instructions│ - /v1 proxy     (session token) │  live here
+└──────────────────────┘  / kill    │  - sweeper                       │
+                                    │  - Postgres (Neon) / PGlite      │ ──────▶ Resend email (optional)
+                                    │  - SSE to dashboard              │ ──────▶ Slack / Discord / webhook
+                                    └──────────────────────────────────┘
 ```
 
-Three deliverables, two packages:
-
-| Package | What | Stack |
+| Part | What | Stack |
 |---|---|---|
-| `server/` | control-server: admin API, agent API, inference proxy, dashboard static page | Node 20+, TypeScript, Hono, better-sqlite3 |
-| `server/public/` | dashboard: one HTML file, vanilla JS, SSE | no build step |
-| `cli/` | `gig-slave` npm package | Node 20+, TypeScript → bundled single JS file, `@mariozechner/pi-coding-agent` SDK |
+| `server/` | landing page, dashboard, admin and agent APIs, `/v1` proxy, sweeper | Hono on Vercel (zero-config), TypeScript, Postgres via `DATABASE_URL` (PGlite when unset) |
+| `server/public/` | `index.html` landing page, `dashboard.html` operator dashboard, `assets/` shared styles | Static HTML, vanilla JS, SSE. No build step |
+| `cli/` | the `gigagent` npm package | Node 22+, TypeScript compiled with `tsc`, `@mariozechner/pi-coding-agent` SDK (not bundled) |
+| `mock/`, `e2e/` | scripted upstream and end-to-end test | Node, no tokens spent |
+| `worker/`, `scripts/` | self-hosting only: stable `workers.dev` address in front of a Cloudflare quick tunnel | Cloudflare Worker, `cloudflared` |
 
-Repo layout: **one monorepo** (`gig-slave/`) with `server/` and `cli/` as npm workspaces. Separate repos add friction for a 2-hour demo; they can be split later with no code changes.
+One monorepo with npm workspaces (`server`, `cli`, `mock`).
 
----
+## 3. The API key never reaches the recipient's Mac
 
-## 3. Key design decision: the API key never touches the recipient's machine
+1. Redeeming a code returns a **session token** (random 32 bytes; only its hash is stored).
+2. The CLI configures Pi with a custom OpenAI-compatible model whose base URL is the server's `/v1` and whose API key is the session token.
+3. `/v1/chat/completions` checks the session is still alive, forces the invite's model, swaps in the real upstream key (gateway or DeepSeek), and streams the response back unchanged.
 
-The CLI never receives the DeepSeek key. Instead:
+So you can revoke a job instantly (the next model call fails), track token use per session, and change providers without republishing the CLI.
 
-1. Code redemption returns a **session token** (random 32-byte, stored hashed).
-2. The CLI configures Pi with a custom OpenAI-compatible model whose `baseUrl` = `https://<server>/v1` and `apiKey` = session token.
-3. The server's `/v1/chat/completions` checks the session is alive, swaps in the real DeepSeek key, and streams the response back.
+## 4. Data and lifecycle
 
-Wins: you can revoke instantly (expire session → next LLM call fails → agent stops), you can log/limit token spend per session, you can switch providers without republishing the CLI.
+- **Invites** have an expiry policy: `one_use` (ends after the first redemption), `on_complete` (works until a session succeeds), or `ttl` (until `expires_at`, optionally with `max_redemptions`). Exact rules are in CONTRACT.md.
+- **Sessions** move through `connecting → working/idle → done | failed | killed`. Heartbeats every few seconds carry status text and pick up instructions and kill requests.
+- **Sweeper** expires overdue invites and marks sessions with no heartbeat for 45 s as `failed` ("Lost connection"). Locally it runs on a timer. On Vercel it runs lazily during requests and from Vercel Cron (`/api/cron/sweep`).
+- **Notifications** run once per session that ends `done` or `failed`. Each attempt is awaited and logged, so serverless functions don't drop it.
+- **Rate limiting** for wrong codes is stored in the database, so it holds across serverless instances.
 
----
-
-## 4. Data model (SQLite)
-
-```sql
-invites(
-  id TEXT PK, code_hash TEXT, label TEXT, email TEXT NULL,
-  task TEXT,                         -- initial instruction
-  working_dir TEXT DEFAULT '~/Desktop',
-  model TEXT,                        -- e.g. deepseek model id; default from env
-  expiry_policy TEXT,                -- 'one_use' | 'on_complete' | 'ttl'
-  expires_at INTEGER NULL,           -- unix ms, for 'ttl' (1 day, 30 days, ...)
-  max_redemptions INTEGER DEFAULT 1,
-  redemptions INTEGER DEFAULT 0,
-  failed_attempts INTEGER DEFAULT 0,
-  status TEXT,                       -- 'pending' | 'active' | 'completed' | 'expired' | 'revoked'
-  created_at INTEGER
-)
-sessions(
-  id TEXT PK, invite_id TEXT FK, token_hash TEXT,
-  machine TEXT,                      -- hostname/os/user reported at redeem (JSON)
-  status TEXT,                       -- 'connecting' | 'working' | 'idle' | 'done' | 'failed' | 'killed'
-  last_heartbeat INTEGER, started_at INTEGER, ended_at INTEGER,
-  tokens_in INTEGER DEFAULT 0, tokens_out INTEGER DEFAULT 0
-)
-events(
-  id INTEGER PK AUTOINCREMENT, session_id TEXT, ts INTEGER,
-  type TEXT,                         -- 'status' | 'tool_call' | 'tool_result' | 'assistant' | 'error' | 'report' | 'instruction'
-  data TEXT                          -- JSON, truncated to ~4KB
-)
-instructions(
-  id INTEGER PK AUTOINCREMENT, session_id TEXT, text TEXT,
-  delivered INTEGER DEFAULT 0, created_at INTEGER
-)
-```
-
----
-
-## 5. API
-
-### Admin (header `Authorization: Bearer $ADMIN_TOKEN`)
-| Method | Path | Purpose |
-|---|---|---|
-| POST | `/api/invites` | `{label, email?, task, working_dir?, model?, expiry_policy, ttl_hours?}` → `{id, code}`. Sends email if Resend configured. Code shown once. |
-| GET | `/api/invites` | list invites + their sessions |
-| POST | `/api/invites/:id/revoke` | revoke invite + kill live sessions |
-| GET | `/api/sessions/:id/events` | history |
-| GET | `/api/stream` | SSE: all events, all sessions (dashboard) |
-| POST | `/api/sessions/:id/instructions` | send follow-up instruction |
-| POST | `/api/sessions/:id/kill` | stop now |
-
-This same API is what "the IT guy's agent" calls to issue agents — it's plain REST, documented in README with curl examples.
-
-### Agent (CLI)
-| Method | Path | Purpose |
-|---|---|---|
-| POST | `/agent/redeem` | `{code, machine}` → `{session_token, session_id, task, working_dir, model, server_v1_url}`. Rate limit: 5 failed attempts per invite → lock; 20/min per IP. |
-| POST | `/agent/events` | batch of events (Bearer session token) |
-| POST | `/agent/heartbeat` | every 10s → `{status, pending_instructions[], kill: bool}` (heartbeat doubles as the poll — no websockets needed) |
-| POST | `/agent/complete` | `{report, success}` → applies expiry policy |
-
-### Inference proxy
-`POST /v1/chat/completions` (Bearer session token) → validates session alive & not expired → forwards to `${UPSTREAM_BASE_URL}` with `${UPSTREAM_API_KEY}` → streams back verbatim. Also `GET /v1/models` passthrough. Records usage when present.
-
----
-
-## 6. Expiry policies
-
-| Policy | Behavior |
-|---|---|
-| `one_use` | Code works once. Session ends on complete/fail/kill. |
-| `on_complete` | Code works until a session calls `/complete` with success. |
-| `ttl` | Code + sessions valid until `expires_at` (1 day, 30 days, custom). Reusable up to `max_redemptions` (default unlimited for ttl). |
-
-A sweeper runs every 30s: expires overdue invites, marks sessions with no heartbeat for 60s as `failed (lost connection)`, and kills sessions whose invite expired (next heartbeat returns `kill: true`; proxy refuses calls immediately).
-
----
-
-## 7. CLI (`gig-slave`) behavior
+## 5. CLI behaviour
 
 ```
-$ npx gig-slave
-  gig-slave · remote helper
-  Enter the code from your email: ▉
-  ✓ Connected — task: "Organize my Desktop"
-  ⠋ Working…  (moving screenshots into Desktop/Screenshots)
+$ npx gigagent ABCD-EFGH
+  ★ Hired Gun
+  ✓ Connected: "Organize my Desktop"
+  ⠋ Working…  (moving screenshots into Screenshots/)
   ● online · 2m 14s · 18 actions
-  ✓ Done. A report was sent. You can close this window.
+  ✓ Done. The report has been sent. You can close this window.
 ```
 
-- **No prompt box.** Only input ever requested is the code (also accepted via `npx gig-slave <CODE>` or `GIG_SLAVE_CODE`).
-- Server URL baked into the package at build time (`GIG_SLAVE_SERVER` overrides for dev).
-- Runs Pi via **SDK** (`createAgentSession`), not by shelling out to `pi`, so we get typed events and full control. Isolated config: Pi's agent dir pointed at a fresh temp dir so we never read or write the recipient's `~/.pi`. Session persistence off.
-- Tools: `read, write, edit, bash`. cwd = resolved `working_dir` (expand `~`; on Windows check `~/OneDrive/Desktop` fallback).
-- System prompt addendum (appended to Pi's): you are operating on a non-technical person's computer remotely; never delete files — move instead; write `.gig-slave-undo.json` manifest of every move in the working dir; stay inside the working directory; finish with a short plain-English report.
-- Event bridge: subscribe to Pi session events → map to `status / tool_call / tool_result / assistant` → batch-POST every 1s. Short human status line derived from the latest tool call.
-- Heartbeat loop every 10s: pick up `pending_instructions` → `session.prompt(text)` after current turn; `kill: true` → abort + exit.
-- Network loss: events buffered in memory, heartbeat retries with backoff; status line shows `● reconnecting…`; after 5 min offline, abort and exit with a message.
-- Ctrl+C: posts `failed: cancelled by user`, then cleanup.
-- **Cleanup on exit (every path):** delete temp Pi dir; best-effort remove its own npx cache dir (`~/.npm/_npx/<hash>` derived from `__dirname`); print "gig-slave removed itself." Nothing is installed globally, so nothing else to remove.
+- **No prompt box.** The only input is the code, given as an argument or typed when asked.
+- Server URL is baked in at build time (`cli/src/server-url.ts`). `GIGAGENT_SERVER` overrides it; `GIG_SLAVE_SERVER` is still honoured as a fallback.
+- Pi runs through the **SDK** (`createAgentSession`) with an isolated temp agent dir, so nothing from the recipient's `~/.pi` or the working folder is loaded. Session persistence is off.
+- Tools: `read`, `write`, `edit`, `bash`, plus `submit_report`, which the agent calls once at the end with the structured result.
+- The system prompt says: the person can't answer questions; never delete, only move; record every move in `.gigagent-undo.json`; stay in the working folder; read-only system checks are fine; finish by calling `submit_report`.
+- Event bridge: Pi events map to `status`, `tool_call`, `tool_result`, `assistant` and are batched to the server. Heartbeat delivers instructions (`session.followUp`) and kill (`session.abort()`).
+- Offline: events buffer in memory and heartbeats retry with backoff. After 5 minutes offline the CLI stops.
+- `caffeinate` keeps the Mac awake for the job.
+- **Cleanup on every exit path** (done, failed, killed, Ctrl+C): remove the temp agent dir, and remove its own npx cache dir only if it sits under `/_npx/`.
 
----
+## 6. Dashboard and landing page
 
-## 8. Dashboard (single HTML page at `/`)
+- **Dashboard** (`/dashboard`): paste the admin token once. New job form (label, task, working folder, model, expiry, optional email and webhook). On create it shows the code and the exact command. Sessions list with status, machine and token use. Session detail with live event log, structured report, instruction box, Kill and Revoke.
+- **Landing page** (`/`): marketing page for Hired Gun. Visual direction and tokens are in [DESIGN.md](DESIGN.md).
 
-- Prompt for admin token once (kept in localStorage).
-- **New agent** form: label, email (optional), task (textarea, prefilled with desktop demo), working dir, expiry policy + TTL, model. On submit shows the code big + copy button + the exact command to send.
-- **Sessions list:** label, machine, status dot (green working / gray idle / blue done / red failed), last heartbeat, tokens used.
-- **Session detail:** live event log (SSE), final report, "send instruction" box, Kill and Revoke buttons.
-- Plain, unstyled-ish. No framework.
+## 7. Config and deployment
 
----
+- Server env vars: [CONTRACT.md](CONTRACT.md#server-env). Local: `.env` at the repo root. Vercel: project environment variables.
+- Deployment steps: [README.md](README.md#deploy-to-vercel).
 
-## 9. Config (server `.env`)
+## 8. Testing
 
-```
-ADMIN_TOKEN=change-me
-UPSTREAM_BASE_URL=https://api.deepseek.com
-UPSTREAM_API_KEY=sk-...
-DEFAULT_MODEL=<deepseek model id>
-PUBLIC_URL=https://your-server.example.com
-RESEND_API_KEY=            # optional; without it, codes are shown in dashboard only
-EMAIL_FROM=
-PORT=8787
-DB_PATH=./data/gig-slave.db
-```
+`npm run e2e` runs everything offline against the mock upstream: create an invite, the CLI redeems it against a fake Desktop, files get organized, the report shows on the dashboard, a `one_use` code is refused the second time, an expired session gets 403 from `/v1`, and the temp dir is gone.
 
----
+## 9. Known gaps and deferred work
 
-## 10. Deployment for the demo
+**Handled now:** wrong-code rate limits, lost connection and reconnect, crash detection by the sweeper, Ctrl+C, kill and revoke, all expiry policies, keys kept on the server, no deletion with an undo log, isolated Pi config, Desktop path handling.
 
-- Server: any box with a public HTTPS URL. Easiest: Railway / Fly.io / Render (Dockerfile provided), or run locally + `cloudflared tunnel` for a throwaway public URL.
-- CLI distribution, two options:
-  - **Fastest:** `npx github:<you>/gig-slave` (no npm publish needed; repo ships a prebuilt `cli/dist`).
-  - **Proper:** `npm publish` the `cli/` package as `gig-slave` (name availability to check) → `npx gig-slave`.
-
----
-
-## 11. Build plan (sub-agents)
-
-| # | Work item | Agent model | Notes |
-|---|---|---|---|
-| 1 | Monorepo scaffold, tsconfig, workspaces, Dockerfile, `.env.example`, README skeleton | Haiku | mechanical |
-| 2 | Server: DB schema + migrations, admin & agent APIs, expiry sweeper | Sonnet | |
-| 3 | Server: `/v1` streaming inference proxy + usage capture | Sonnet | must stream SSE untouched |
-| 4 | Dashboard HTML/JS | Haiku | against API contract in §5 |
-| 5 | CLI: Pi SDK integration, custom provider pointing at proxy, isolated agent dir, event bridge | Sonnet | verify SDK API against installed Pi version first |
-| 6 | CLI: status UI, heartbeat/instructions/kill loop, cleanup | Haiku | |
-| 7 | Mock OpenAI-compatible upstream for offline E2E tests (scripted tool calls that move files in a fake Desktop) | Haiku | lets us test without spending tokens |
-| 8 | Integration + E2E run: issue invite → redeem → agent organizes fake desktop → report → expiry applied → cleanup verified | Opus (me) | |
-| 9 | Independent review pass of whole repo against this plan | Sonnet (fresh agent) | |
-
-Items 1 first; 2/3, 4, 5/6, 7 in parallel; then 8, 9.
-
-**Definition of done:** with a mock upstream, the full E2E passes in CI-style script; with a real DeepSeek key, the desktop demo works on macOS and Linux.
-
----
-
-## 12. Known edge cases handled in v0 vs. deferred
-
-**Handled now:** wrong code lockout, code rate limits, lost connection & reconnect, agent crash → session marked failed by sweeper, Ctrl+C, kill/revoke from dashboard, expiry by TTL/one-use/on-complete, key never on client, no file deletion + undo manifest, OneDrive Desktop on Windows, isolated Pi config.
-
-**Deferred (security pass later):** machine-binding of tokens, signed CLI releases, per-session tool allowlists / command policy, operator approval for risky commands, multi-operator accounts, audit export, spend caps per invite.
+**Deferred:** machine-binding of tokens, signed CLI releases, per-session tool allowlists and command policy, operator approval for risky commands, multi-operator accounts, audit export, spend caps per invite, Windows support, an offboarding mode.

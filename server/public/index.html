@@ -3,640 +3,633 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>gig-slave dashboard</title>
+<meta name="color-scheme" content="light dark">
+<title>Hired Gun: get a job done on someone else’s Mac with one code</title>
+<meta name="description" content="Write the job, send a one-time code, and an AI agent does it on their Mac while you watch. They paste one line into Terminal. No sign-up and no API key for the person at the keyboard. The report comes back to your dashboard, email or Slack.">
+<meta name="theme-color" content="#e9eef2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1322" media="(prefers-color-scheme: dark)">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Hired Gun">
+<meta property="og:title" content="Hired Gun: a hired gun for the Mac you can’t get to">
+<meta property="og:description" content="Send a one-time code. They paste one line into Terminal. An AI agent does the job while you watch, reports back, and leaves.">
+<meta property="og:image" content="/assets/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/assets/logo.svg" type="image/svg+xml">
+<link rel="preload" href="/assets/fonts/zilla-slab-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/hanken-grotesk-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/assets/brand.css">
 <style>
-  [hidden] { display: none !important; }
-  * { box-sizing: border-box; }
-  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 15px; color: #222; background: #f6f6f6; }
-  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 12px 16px; background: #fff; border-bottom: 1px solid #ddd; }
-  header strong { font-size: 17px; }
-  main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 16px; align-items: start; max-width: 1100px; margin: 0 auto; padding: 16px; }
-  @media (max-width: 800px) { main { grid-template-columns: 1fr; padding: 12px; } }
-  .card { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 14px; margin-bottom: 16px; }
-  .narrow { max-width: 420px; margin: 40px auto; }
-  h2 { font-size: 17px; margin: 0 0 10px; }
-  h3 { font-size: 14px; margin: 16px 0 6px; }
-  label { display: block; margin: 10px 0; font-size: 14px; }
-  input, select, textarea { display: block; width: 100%; font: inherit; margin-top: 3px; padding: 7px; border: 1px solid #aaa; border-radius: 4px; background: #fff; }
-  textarea { resize: vertical; }
-  #instrText { flex: 1; min-width: 0; width: auto; margin-top: 0; }
-  button { font: inherit; padding: 6px 12px; border: 1px solid #888; border-radius: 4px; background: #fff; cursor: pointer; }
-  button:disabled { opacity: .45; cursor: default; }
-  button.primary { background: #222; color: #fff; border-color: #222; }
-  button.danger { color: #b00; border-color: #b00; }
-  .row { display: flex; gap: 8px; align-items: center; }
-  .wrap { flex-wrap: wrap; }
-  .between { justify-content: space-between; }
-  .grow { flex: 1; min-width: 0; }
-  .muted { color: #666; }
-  .small { font-size: 12px; }
-  .err { color: #b00; font-size: 13px; min-height: 1em; margin-top: 6px; overflow-wrap: anywhere; }
-  .ok { color: #2a7a3a; }
-  .bad { color: #b00; }
-  .badge { font-size: 12px; border: 1px solid #bbb; border-radius: 10px; padding: 0 7px; color: #444; white-space: nowrap; }
-  .code { font: 700 clamp(28px, 9vw, 52px) ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .06em; margin: 6px 0 10px; word-break: break-all; }
-  .cmd { background: #f3f3f3; padding: 8px; border-radius: 4px; white-space: pre-wrap; word-break: break-all; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
-  .note { font-size: 13px; color: #8a4b00; background: #fff6e5; padding: 8px; border-radius: 4px; }
-  .invite { border-top: 1px solid #eee; padding-top: 10px; margin-top: 10px; }
-  .row-s { display: flex; gap: 10px; align-items: flex-start; width: 100%; text-align: left; background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 8px; margin: 6px 0; }
-  .row-s.sel { border-color: #2563eb; box-shadow: 0 0 0 1px #2563eb; }
-  .dot { flex: none; width: 10px; height: 10px; margin-top: 5px; border-radius: 50%; background: #999; }
-  .dot.green { background: #2a9d3f; }
-  .dot.blue { background: #2563eb; }
-  .dot.red { background: #d33; }
-  .report { border: 2px solid #2563eb; background: #eef4ff; border-radius: 6px; padding: 10px; margin: 12px 0; }
-  .reptext { white-space: pre-wrap; margin-top: 4px; overflow-wrap: anywhere; }
-  .log { max-height: 55vh; overflow: auto; border: 1px solid #e3e3e3; border-radius: 4px; padding: 6px; background: #fcfcfc; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
-  .ln { display: flex; gap: 6px; align-items: flex-start; flex-wrap: wrap; padding: 2px 0; }
-  .t { color: #888; white-space: nowrap; }
-  .tag { font-size: 11px; background: #eee; border-radius: 3px; padding: 0 4px; white-space: nowrap; }
-  .tag.instruction { background: #fde9c8; }
-  .tag.error { background: #fbd5d5; }
-  .tag.report { background: #cfe0ff; }
-  .m { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-  details pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f0f0f0; padding: 6px; margin: 4px 0; max-height: 240px; overflow: auto; }
-  summary { cursor: pointer; }
+html { scroll-behavior: smooth; scroll-padding-top: 5rem; }
+body { overflow-x: clip; }
+a { color: var(--brass-text); text-underline-offset: 0.18em; }
+a:hover { text-decoration-thickness: 2px; }
+p { margin: 0; text-wrap: pretty; }
+.wrap { width: min(100% - 2rem, 72rem); margin-inline: auto; }
+@media (min-width: 720px) { .wrap { width: min(100% - 4rem, 72rem); } }
+section { padding-block: clamp(3.5rem, 2rem + 6vw, 7rem); }
+code.inline { font-size: 0.88em; background: var(--surface-2); border: 1px solid var(--border); padding: 0.05em 0.4em; border-radius: 4px; overflow-wrap: anywhere; }
+
+.skip { position: absolute; left: 1rem; top: -4rem; z-index: 100; background: var(--brass); color: var(--ink); padding: 0.6rem 1rem; border-radius: var(--radius-sm); font-weight: 650; }
+.skip:focus { top: 0.75rem; }
+
+/* ---- nav ---- */
+.nav { position: sticky; top: 0; z-index: 50; background: color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1.5px solid var(--text); }
+.nav-in { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 4rem; }
+.nav .lockup { color: var(--text); }
+.nav-links { display: none; gap: 0.25rem; }
+.nav-links a { color: var(--text-2); font-weight: 600; font-size: 0.95rem; padding: 0.55rem 0.8rem; border-radius: var(--radius-sm); text-decoration: none; }
+.nav-links a:hover { color: var(--text); background: var(--surface-2); }
+.nav-cta { display: flex; align-items: center; gap: 0.6rem; }
+.menu { position: relative; }
+.menu summary { list-style: none; cursor: pointer; width: 2.75rem; height: 2.75rem; display: grid; place-items: center; border: 1.5px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); }
+.menu summary::-webkit-details-marker { display: none; }
+.menu-panel { position: absolute; right: 0; top: 3.4rem; width: min(17rem, calc(100vw - 2rem)); display: grid; padding: 0.4rem; background: var(--surface); border: 1.5px solid var(--text); border-radius: var(--radius); box-shadow: var(--shadow-lg); }
+.menu-panel a { color: var(--text); font-weight: 600; padding: 0.8rem 0.9rem; border-radius: var(--radius-sm); text-decoration: none; }
+.menu-panel a:hover { background: var(--surface-2); }
+@media (min-width: 960px) { .nav-links { display: flex; } .menu { display: none; } }
+@media (max-width: 959px) { .nav-cta .btn { display: none; } }
+
+/* ---- hero ---- */
+.hero { padding-block: clamp(2.5rem, 1rem + 5vw, 5.5rem) clamp(2.5rem, 1.5rem + 4vw, 5rem); }
+.hero-grid { display: grid; gap: 3rem; align-items: center; }
+@media (min-width: 960px) { .hero-grid { grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 4rem; } }
+h1 { font-size: clamp(2.7rem, 1.2rem + 6vw, 5.2rem); line-height: 1; letter-spacing: -0.02em; max-width: 13ch; }
+.lede { font-size: clamp(1.05rem, 1rem + 0.4vw, 1.28rem); color: var(--text-2); max-width: 34rem; margin-top: 1.4rem; line-height: 1.5; }
+.cta-row { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 2rem; }
+.fine { font-size: 0.9rem; color: var(--text-3); margin-top: 1.2rem; max-width: 32rem; }
+
+/* the ticket */
+.hero-ticket { margin: 0; max-width: 28rem; justify-self: center; width: 100%; }
+@media (min-width: 960px) { .hero-ticket { justify-self: end; } }
+.tk-top { padding: 1.4rem 1.5rem 1.6rem; display: grid; gap: 0.9rem; }
+.tk-row { display: grid; grid-template-columns: 5.5rem 1fr; gap: 0.75rem; font-size: 0.95rem; align-items: baseline; }
+.tk-k { color: var(--text-3); font-size: 0.85rem; }
+.tk-v { font-weight: 650; overflow-wrap: anywhere; }
+.tk-code { font-family: var(--font-display); font-weight: 700; font-size: clamp(2.1rem, 1.4rem + 3vw, 2.9rem); letter-spacing: 0.06em; line-height: 1.1; padding: 0.55rem 0.9rem; background: var(--brass); color: var(--ink); border: 1.5px solid var(--ink); border-radius: var(--radius-sm); text-align: center; font-variant-numeric: tabular-nums; margin-top: 0.3rem; }
+.tk-note { font-size: 0.85rem; color: var(--text-3); text-align: center; }
+.tk-stub { background: var(--ink); color: var(--chalk); border-radius: 0 0 calc(var(--radius-lg) - 2px) calc(var(--radius-lg) - 2px); padding: 1.2rem 1.4rem 1.5rem; font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.8; }
+.tk-stub div { overflow-wrap: anywhere; }
+@media (prefers-color-scheme: dark) { .tk-stub { background: #0a101d; } }
+.t-prompt { color: #8ee0b8; } .t-cmd { color: #fff; font-weight: 600; } .t-dim { color: #9fb0c8; } .t-ok { color: #4fd39a; } .t-brass { color: var(--brass); }
+.t-line { opacity: 0; animation: tline 0.3s forwards; }
+.t-line:nth-child(1) { animation-delay: 0.3s; } .t-line:nth-child(2) { animation-delay: 1.1s; } .t-line:nth-child(3) { animation-delay: 1.5s; }
+.t-line:nth-child(4) { animation-delay: 2.2s; } .t-line:nth-child(5) { animation-delay: 3s; } .t-line:nth-child(6) { animation-delay: 3.7s; }
+.t-line:nth-child(7) { animation-delay: 4.4s; } .t-line:nth-child(8) { animation-delay: 5.2s; } .t-line:nth-child(9) { animation-delay: 5.9s; } .t-line:nth-child(10) { animation-delay: 6.4s; }
+@keyframes tline { from { opacity: 0; translate: 0 4px; } to { opacity: 1; translate: 0 0; } }
+.cursor { display: inline-block; width: 0.5em; height: 1em; background: var(--chalk); vertical-align: text-bottom; animation: blink 1.1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* ---- sections: heading column + content column ---- */
+.sec { display: grid; gap: 2rem 4rem; border-top: 2px solid var(--text); padding-top: 1.6rem; }
+@media (min-width: 960px) { .sec { grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); } }
+.sec-head h2 { font-size: clamp(1.9rem, 1.2rem + 2.6vw, 3rem); letter-spacing: -0.01em; }
+.sec-head p { color: var(--text-2); margin-top: 1rem; max-width: 30rem; }
+@media (min-width: 960px) { .sec-head { position: sticky; top: 6rem; align-self: start; } }
+.band { background: var(--ink); color: var(--chalk); --bg: var(--ink); --surface: var(--ink-2); --surface-2: #26395c; --text: var(--chalk); --text-2: var(--chalk-2); --text-3: #9fb0c8; --border: #2f4468; --border-strong: #7188ac; --focus: #f2b632; --brass-text: #f2b632; }
+.band .sec { border-top-color: var(--brass); }
+@media (prefers-color-scheme: dark) { .band { background: #0f1a2f; --bg: #0f1a2f; } }
+
+/* gap */
+.gap-cols { display: grid; gap: 1.25rem; }
+@media (min-width: 720px) { .gap-cols { grid-template-columns: 1fr 1fr; } }
+.gap-col { padding: 1.5rem; border: 1.5px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); }
+.gap-col.ours { border-color: var(--text); box-shadow: var(--shadow-sm); }
+.gap-col h3 { font-size: 1.35rem; margin: 0.4rem 0 0.7rem; }
+.gap-col p { color: var(--text-2); }
+.gap-col .tag { font-size: 0.9rem; font-weight: 650; color: var(--text-3); }
+.gap-col.ours .tag { color: var(--brass-text); }
+.old-steps { list-style: none; margin: 1.1rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.old-steps li { font-size: 0.85rem; padding: 0.2rem 0.6rem; border: 1px dashed var(--border-strong); border-radius: 999px; color: var(--text-2); }
+.oneline { margin-top: 1.1rem; background: var(--ink); color: var(--chalk); font-family: var(--font-mono); font-size: 0.9rem; padding: 0.85rem 1rem; border-radius: var(--radius-sm); overflow-x: auto; white-space: nowrap; }
+.footnote { font-size: 0.82rem; color: var(--text-3); margin-top: 1.5rem; max-width: 46rem; }
+
+/* how */
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 2rem; }
+@media (min-width: 720px) { .steps { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.75rem; } }
+.step { border-top: 1.5px solid var(--border-strong); padding-top: 1rem; }
+.step-n { font-family: var(--font-display); font-weight: 700; font-size: 2.6rem; line-height: 1; color: var(--brass); }
+.step h3 { font-size: 1.35rem; margin: 0.6rem 0 0.5rem; }
+.step p { color: var(--text-2); font-size: 0.97rem; }
+.step .code { display: inline-block; margin-top: 0.9rem; font-family: var(--font-mono); font-size: 0.9rem; background: var(--bg); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 0.45rem 0.7rem; overflow-wrap: anywhere; }
+.control { margin-top: 3rem; display: grid; gap: 1.25rem; }
+@media (min-width: 720px) { .control { grid-template-columns: 1fr 2fr; gap: 2rem; } }
+.control h3 { font-size: 1.5rem; }
+.control-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 1.1rem; }
+@media (min-width: 720px) { .control-list { grid-template-columns: repeat(3, 1fr); } }
+.control-list b { display: block; margin-bottom: 0.15rem; }
+.control-list span { color: var(--text-2); font-size: 0.95rem; }
+
+/* jobs */
+.jobs { list-style: none; margin: 0; padding: 0; }
+.job { display: grid; gap: 1rem 2rem; padding: 1.5rem 0; border-top: 1px solid var(--border-strong); }
+.job:first-child { border-top: 0; padding-top: 0; }
+@media (min-width: 720px) { .job { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.job-who small { display: block; font-size: 0.88rem; font-weight: 650; color: var(--brass-text); }
+.job-who h3 { font-size: 1.25rem; margin: 0.2rem 0 0.4rem; line-height: 1.2; }
+.job-who p { color: var(--text-2); font-size: 0.95rem; }
+.job-task { margin: 0; padding: 0.15rem 0 0.15rem 1rem; border-left: 4px solid var(--brass); font-size: 0.97rem; font-style: italic; }
+.job-out { margin-top: 0.7rem; font-size: 0.93rem; color: var(--text-2); }
+.job-out b { color: var(--ok); font-style: normal; }
+.honest { margin-top: 2rem; padding: 1.1rem 1.3rem; background: var(--warn-soft); border: 1.5px solid var(--warn); border-radius: var(--radius); font-size: 0.95rem; color: var(--text); }
+.honest b { color: var(--warn); }
+
+/* roi */
+.roi { display: grid; gap: 1.5rem; }
+@media (min-width: 720px) { .roi { grid-template-columns: 1fr 1fr; align-items: start; } }
+.calc { padding: 1.4rem; background: var(--surface); border: 1.5px solid var(--border-strong); border-radius: var(--radius); }
+.field { margin-bottom: 1.25rem; }
+.field:last-child { margin-bottom: 0; }
+.field label { display: flex; justify-content: space-between; gap: 0.75rem; font-weight: 650; font-size: 0.95rem; margin-bottom: 0.4rem; }
+.field output { font-weight: 700; color: var(--brass-text); font-variant-numeric: tabular-nums; }
+.hint { font-size: 0.85rem; color: var(--text-3); margin-top: 0.3rem; }
+.field input[type=number] { width: 100%; font: inherit; font-size: 1rem; min-height: 2.75rem; padding: 0.5rem 0.8rem; border-radius: var(--radius-sm); border: 1.5px solid var(--border-strong); background: var(--surface); color: var(--text); }
+.field input[type=number]:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.field input[type=range] { width: 100%; height: 2rem; margin: 0; }
+.opt { margin-top: 1.4rem; padding-top: 1.2rem; border-top: 1px dashed var(--border-strong); }
+.opt h3 { font-family: var(--font-sans); font-size: 0.95rem; margin-bottom: 0.8rem; }
+.out-card { background: var(--ink); color: var(--chalk); border-radius: var(--radius); padding: 1.6rem; border: 1.5px solid var(--ink); }
+@media (prefers-color-scheme: dark) { .out-card { background: #0f1a2f; border-color: var(--border-strong); } }
+.out-card h3 { font-family: var(--font-sans); font-size: 0.95rem; font-weight: 650; color: var(--chalk-2); }
+.big { font-family: var(--font-display); font-weight: 700; font-size: clamp(2.8rem, 2rem + 4vw, 4.2rem); line-height: 1; margin-top: 0.7rem; color: var(--brass); font-variant-numeric: tabular-nums; }
+.big small { font-size: 0.4em; color: var(--chalk-2); font-weight: 600; }
+.out-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.4rem; padding-top: 1.2rem; border-top: 1px solid #2f4468; }
+.out-row strong { display: block; font-family: var(--font-display); font-size: 1.6rem; font-variant-numeric: tabular-nums; }
+.out-row span { font-size: 0.85rem; color: var(--chalk-2); }
+.formula { font-family: var(--font-mono); font-size: 0.72rem; line-height: 1.7; margin-top: 1.2rem; color: var(--chalk-2); }
+.example { margin-top: 1rem; font-size: 0.93rem; color: var(--text-2); }
+.example b { color: var(--text); }
+.estimate { font-size: 0.82rem; color: var(--text-3); margin-top: 1rem; }
+
+/* result */
+.rc { margin: 0; }
+.rc-head { display: flex; justify-content: space-between; gap: 0.75rem; align-items: flex-start; padding: 1.1rem 1.3rem; flex-wrap: wrap; }
+.rc-head strong { font-family: var(--font-display); font-size: 1.15rem; display: block; }
+.rc-head small { color: var(--text-3); font-size: 0.85rem; }
+.done { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; font-weight: 700; color: var(--ok); background: var(--ok-soft); border: 1px solid var(--ok); padding: 0.1rem 0.7rem; border-radius: 999px; }
+.rc-body { padding: 1.2rem 1.3rem 1.4rem; display: grid; gap: 1.2rem; }
+.rc-sec h3 { font-family: var(--font-sans); font-size: 0.9rem; font-weight: 700; color: var(--text-3); margin-bottom: 0.4rem; }
+.rc-sec p { font-size: 0.95rem; color: var(--text-2); }
+.rc-sec p.ans { color: var(--text); font-weight: 650; }
+.tbl-wrap { border: 1px solid var(--border-strong); border-radius: var(--radius-sm); overflow-x: auto; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.tbl th, .tbl td { text-align: left; padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--border); }
+.tbl thead th { background: var(--surface-2); font-size: 0.82rem; color: var(--text-2); }
+.tbl tbody th { font-weight: 500; color: var(--text-2); width: 34%; }
+.tbl tr:last-child th, .tbl tr:last-child td { border-bottom: 0; }
+.pass { color: var(--ok); font-weight: 700; } .flag { color: var(--warn); font-weight: 700; }
+.chg { list-style: none; margin: 0; padding: 0; font-family: var(--font-mono); font-size: 0.82rem; display: grid; gap: 0.3rem; color: var(--text-2); }
+.chg li { background: var(--surface-2); border-radius: 4px; padding: 0.35rem 0.6rem; }
+.chg b { color: var(--text-3); font-weight: 500; }
+.res-grid { display: grid; gap: 2.5rem; align-items: start; }
+@media (min-width: 960px) { .res-grid { grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); gap: 4rem; } }
+.bullets { list-style: none; padding: 0; margin: 1.4rem 0 0; display: grid; gap: 0.8rem; }
+.bullets li { display: flex; gap: 0.75rem; color: var(--text-2); font-size: 0.97rem; }
+.bullets li::before { content: ""; flex: none; width: 1.2rem; height: 1.2rem; margin-top: 0.2rem; border-radius: 50%; background: var(--ok-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M5.5 10.5l3 3 6-7' stroke='%231b6b49' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 100% no-repeat; border: 1px solid var(--ok); }
+.deliver { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.4rem; }
+.chip { display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.88rem; font-weight: 600; border: 1.5px solid var(--border-strong); padding: 0.35rem 0.8rem; border-radius: 999px; background: var(--surface); color: var(--text); }
+
+/* trust */
+.rules-title { font-size: 1.4rem; margin-bottom: 0.4rem; }
+.rules-title:not(:first-child) { margin-top: 2.6rem; }
+.rules-note { color: var(--text-2); font-size: 0.95rem; margin-bottom: 0.4rem; max-width: 40rem; }
+.rules { list-style: none; margin: 0; padding: 0; }
+.rule { display: grid; grid-template-columns: 2.25rem 1fr; gap: 0 1rem; padding: 1.1rem 0; border-top: 1px solid var(--border-strong); }
+.rule:first-child { border-top: 0; }
+.rule svg { width: 1.5rem; height: 1.5rem; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; margin-top: 0.15rem; color: var(--ok); }
+.rules.soft .rule svg { color: var(--brass-text); }
+.rule h4 { font-family: var(--font-sans); font-size: 1.02rem; font-weight: 700; }
+.rule p { color: var(--text-2); font-size: 0.95rem; margin-top: 0.15rem; }
+
+/* faq */
+.faq { display: grid; border-top: 1px solid var(--border-strong); }
+.faq details { border-bottom: 1px solid var(--border-strong); }
+.faq summary { cursor: pointer; list-style: none; padding: 1.05rem 0; font-weight: 700; font-size: 1.05rem; display: flex; justify-content: space-between; gap: 1rem; align-items: center; min-height: 3.2rem; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: "+"; font-family: var(--font-display); font-size: 1.7rem; line-height: 1; color: var(--brass-text); flex: none; transition: rotate 0.15s; }
+.faq details[open] summary::after { rotate: 45deg; }
+.faq .ans { padding: 0 0 1.2rem; color: var(--text-2); max-width: 42rem; }
+
+/* final */
+.final { padding-block: clamp(3rem, 2rem + 5vw, 6rem); border-top: 2px solid var(--text); }
+.final h2 { font-size: clamp(2.2rem, 1.2rem + 4.5vw, 4.2rem); line-height: 1.02; max-width: 16ch; }
+.final p { color: var(--text-2); margin-top: 1rem; max-width: 30rem; font-size: 1.1rem; }
+
+footer { border-top: 1.5px solid var(--text); padding: 2rem 0 2.5rem; color: var(--text-3); font-size: 0.92rem; }
+.foot { display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: space-between; align-items: center; }
+.foot .lockup { color: var(--text); font-size: 1.15rem; }
+.foot nav { display: flex; flex-wrap: wrap; gap: 0.25rem 1.2rem; }
+.foot nav a { color: var(--text-2); }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .t-line { animation: none; opacity: 1; }
+  .cursor { animation: none; }
+  .faq summary::after, .btn { transition: none; }
+}
 </style>
 </head>
 <body>
-<header>
-  <strong>gig-slave</strong>
-  <span id="conn" class="muted small"></span>
-  <span class="grow"></span>
-  <a href="#" id="changeToken" hidden>change token</a>
+<a class="skip" href="#main">Skip to content</a>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="12" r="4"/><path d="M12 12h9M18 12v4"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></symbol>
+  <symbol id="i-once" viewBox="0 0 24 24"><path d="M12 3 19 6v5.5c0 4.4-3 7.4-7 9-4-1.6-7-4.6-7-9V6l7-3Z"/><path d="m9 12 2.2 2.2L15.5 10"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-broom" viewBox="0 0 24 24"><path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></symbol>
+  <symbol id="i-move" viewBox="0 0 24 24"><path d="M4 12h13M12 6l6 6-6 6"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M4 11a8 8 0 1 1 2.3 5.7M4 5v6h6"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 7 8.5 6 8.5-6"/></symbol>
+</svg>
+
+<header class="nav">
+  <div class="wrap nav-in">
+    <a class="lockup" href="/" aria-label="Hired Gun home"><img src="/assets/logo.svg" alt="" width="30" height="30">Hired Gun</a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="#how">How it works</a>
+      <a href="#use-cases">Jobs</a>
+      <a href="#roi">ROI</a>
+      <a href="#security">Trust</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <div class="nav-cta">
+      <a class="btn btn-primary btn-sm" href="/dashboard">Open dashboard</a>
+      <details class="menu">
+        <summary aria-label="Menu"><svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><use href="#i-menu"/></svg></summary>
+        <div class="menu-panel">
+          <a href="#how">How it works</a>
+          <a href="#use-cases">Jobs</a>
+          <a href="#roi">ROI</a>
+          <a href="#security">Trust</a>
+          <a href="#faq">FAQ</a>
+          <a href="/dashboard" style="color:var(--brass-text)">Open dashboard</a>
+        </div>
+      </details>
+    </div>
+  </div>
 </header>
 
-<section id="auth" class="card narrow" hidden>
-  <h2>Admin token</h2>
-  <p class="muted small">Paste the server's ADMIN_TOKEN. It is saved in this browser only.</p>
-  <form id="tokenForm" autocomplete="off">
-    <input id="tokenInput" type="password" placeholder="ADMIN_TOKEN" required>
-    <div class="row" style="margin-top:10px">
-      <button class="primary" type="submit">Save</button>
-      <button type="button" id="tokenCancel" hidden>Cancel</button>
+<main id="main">
+
+<section class="hero" aria-labelledby="h-hero">
+  <div class="wrap hero-grid">
+    <div>
+      <h1 id="h-hero">A hired gun for the Mac you can’t get to.</h1>
+      <p class="lede">Write the job. Send a one-time code. They paste one line into Terminal, and an AI agent does the work on their Mac while you watch. Then it reports back and leaves.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary btn-lg" href="/dashboard">Open dashboard</a>
+        <a class="btn btn-lg" href="#how">See how it works</a>
+      </div>
+      <p class="fine">Nothing for them to sign up for, and no API key. macOS only for now. You can set a code to work once, and you can stop the agent from your dashboard at any time.</p>
     </div>
-    <div id="tokenErr" class="err"></div>
-  </form>
+
+    <figure class="ticket hero-ticket">
+      <figcaption class="sr-only">Example: a job ticket with its one-time code, and what the person at the Mac sees in Terminal after pasting the command.</figcaption>
+      <div class="tk-top">
+        <div class="tk-row"><span class="tk-k">Job</span><span class="tk-v">Check Maya’s Mac is ready for day one</span></div>
+        <div class="tk-row"><span class="tk-k">Works in</span><span class="tk-v">~/Desktop</span></div>
+        <div class="tk-code">K7QM-4XPA</div>
+        <p class="tk-note">Example code. Real ones are made in your dashboard.</p>
+      </div>
+      <div class="ticket-tear" aria-hidden="true"></div>
+      <div class="tk-stub" aria-hidden="true">
+        <div class="t-line"><span class="t-prompt">maya@macbook ~ %</span> <span class="t-cmd">npx gigagent K7QM-4XPA</span></div>
+        <div class="t-line"><span class="t-brass">★ Hired Gun</span></div>
+        <div class="t-line"><span class="t-dim">A helper sent by someone you trust. It does one job on this Mac, then leaves.</span></div>
+        <div class="t-line"><span class="t-ok">✓</span> Connected. Job: Check this Mac is ready for day one</div>
+        <div class="t-line"><span class="t-brass">⠹</span> Checking macOS version and updates…</div>
+        <div class="t-line"><span class="t-brass">⠹</span> Checking disk space and FileVault…</div>
+        <div class="t-line"><span class="t-brass">⠹</span> Listing installed apps…</div>
+        <div class="t-line"><span class="t-ok">✓</span> All done. Your report has been sent.</div>
+        <div class="t-line"><span class="t-dim">Hired Gun has removed itself from this Mac.</span> <span class="cursor"></span></div>
+      </div>
+    </figure>
+  </div>
 </section>
 
-<main id="app" hidden>
-  <div>
-    <section class="card">
-      <h2>New agent</h2>
-      <form id="newForm">
-        <label>Label<input id="nLabel" required placeholder="Dad's iMac"></label>
-        <label>Task<textarea id="nTask" rows="5" required>Organize my Desktop into folders by type (Images, Documents, Videos, Music, Archives, Other). Don't touch folders that already exist. Never delete anything.</textarea></label>
-        <label>Working folder<input id="nDir" value="~/Desktop"></label>
-        <label>Model<select id="model"></select></label>
-        <label>Code expires
-          <select id="policy">
-            <option value="one_use" selected>After one use</option>
-            <option value="on_complete">When a run completes successfully</option>
-            <option value="ttl">After a set time</option>
-          </select>
-        </label>
-        <div id="ttlBox" hidden>
-          <label>Valid for
-            <select id="ttlPreset">
-              <option value="24" selected>1 day</option>
-              <option value="720">30 days</option>
-              <option value="custom">Custom</option>
-            </select>
-          </label>
-          <label id="ttlCustomBox" hidden>Hours<input id="ttlCustom" type="number" min="1" step="1" value="72"></label>
+<section aria-labelledby="h-gap">
+  <div class="wrap sec">
+    <div class="sec-head">
+      <h2 id="h-gap">Agents are for people who live in Terminal. Your dad lives in Mail.</h2>
+      <p>About half of U.S. adults now use AI chatbots<sup><a href="#fn-pew" aria-label="Footnote 1">1</a></sup>. But chatting isn’t the same as an agent that opens a folder and gets something done. Running one today still means a terminal, API keys, installs and config, so most people never try.</p>
+    </div>
+    <div>
+      <div class="gap-cols">
+        <div class="gap-col">
+          <span class="tag">Agents today</span>
+          <h3>Built for people who live in a terminal</h3>
+          <p>Pick a tool, install it, sign up, generate an API key, paste it in the right place, then write a good prompt. Every step is a place to give up.</p>
+          <ul class="old-steps" aria-label="Typical setup steps"><li>install runtime</li><li>create account</li><li>get API key</li><li>edit config</li><li>write prompt</li></ul>
         </div>
-        <button id="newBtn" class="primary" type="submit">Create code</button>
-        <div id="newErr" class="err"></div>
-      </form>
-      <div id="result" hidden>
-        <h3>Code</h3>
-        <div id="codeBig" class="code"></div>
-        <div class="row"><button type="button" id="copyCode">Copy code</button></div>
-        <h3>Command</h3>
-        <pre id="cmd" class="cmd"></pre>
-        <div class="row"><button type="button" id="copyCmd">Copy command</button></div>
-        <p class="note">Send this to the person. The code is shown only once.</p>
+        <div class="gap-col ours">
+          <span class="tag">With Hired Gun</span>
+          <h3>The expert sets it up. They paste one line.</h3>
+          <p>You know what needs doing, so you write the job and hold the keys. The person at the computer needs only Terminal and a code.</p>
+          <div class="oneline"><span class="t-prompt">$</span> npx gigagent K7QM-4XPA</div>
+        </div>
       </div>
-    </section>
-
-    <section class="card">
-      <h2>Agents</h2>
-      <div id="listErr" class="err"></div>
-      <div id="invites"></div>
-    </section>
+      <p class="footnote" id="fn-pew">1. Pew Research Center, <a href="https://www.pewresearch.org/chart/about-half-of-u-s-adults-now-use-ai-chatbots-up-from-a-third-in-2024/" target="_blank" rel="noopener">About half of U.S. adults now use AI chatbots, up from a third in 2024</a> (survey conducted Feb 17–23, 2026). The statement about agents is our own observation, not a survey figure.</p>
+    </div>
   </div>
+</section>
 
-  <section id="detail" class="card" hidden>
-    <div class="row between">
-      <h2 id="dTitle" class="grow"></h2>
-      <button type="button" id="dClose">Close</button>
+<section id="how" class="band" aria-labelledby="h-how">
+  <div class="wrap sec">
+    <div class="sec-head">
+      <h2 id="h-how">From “can you take a look?” to done, in three steps.</h2>
+      <p>No screen share. No remote desktop. No back and forth.</p>
     </div>
-    <div id="dHead"></div>
-    <div id="dReport" class="report" hidden></div>
-    <form id="instrForm" class="row" style="margin-top:10px">
-      <input id="instrText" placeholder="Send an instruction to the agent" autocomplete="off">
-      <button id="instrBtn" type="submit">Send</button>
-    </form>
-    <div id="instrErr" class="err"></div>
-    <div class="row wrap">
-      <button id="killBtn" class="danger" type="button">Kill agent</button>
-      <button id="revokeBtn" class="danger" type="button">Revoke invite</button>
+    <div>
+      <ol class="steps">
+        <li class="step">
+          <span class="step-n" aria-hidden="true">1</span>
+          <h3>Write the job</h3>
+          <p>In the dashboard, say what needs doing in plain English. Pick the one folder it may work in, choose a model, and decide when the code stops working.</p>
+        </li>
+        <li class="step">
+          <span class="step-n" aria-hidden="true">2</span>
+          <h3>Send the code</h3>
+          <p>You get a one-time code. Text it, email it, read it over the phone. They open Terminal and run:</p>
+          <span class="code">npx gigagent K7QM-4XPA</span>
+        </li>
+        <li class="step">
+          <span class="step-n" aria-hidden="true">3</span>
+          <h3>Get the report</h3>
+          <p>The agent does the work and returns a plain-English summary for them, and the answer, key findings and changes for you. Then it removes itself from their Mac.</p>
+        </li>
+      </ol>
+      <div class="control">
+        <h3>You stay in control the whole time.</h3>
+        <ul class="control-list">
+          <li><b>Watch live</b><span>Every command and file the agent touches shows up on your dashboard as it happens.</span></li>
+          <li><b>Send instructions</b><span>Spotted something mid-job? Add an instruction and the agent picks it up.</span></li>
+          <li><b>Stop anytime</b><span>Stop a session or revoke the code. The agent’s next model call is refused and it halts.</span></li>
+        </ul>
+      </div>
     </div>
-    <div id="actErr" class="err"></div>
-    <h3>Activity</h3>
-    <div id="log" class="log"></div>
-  </section>
+  </div>
+</section>
+
+<section id="use-cases" aria-labelledby="h-uc">
+  <div class="wrap sec">
+    <div class="sec-head">
+      <h2 id="h-uc">The jobs you’d normally do over someone’s shoulder.</h2>
+      <p>Anything you could do by looking around a Mac and tidying or writing something down, a person can hand to an agent with one line.</p>
+    </div>
+    <div>
+      <ul class="jobs">
+        <li class="job">
+          <div class="job-who"><small>IT teams</small><h3>New-hire onboarding and laptop readiness</h3><p>Replace the 45-minute setup call with a checklist the new hire kicks off themselves.</p></div>
+          <div><blockquote class="job-task">“Check this Mac is ready for day one: OS, updates, disk, FileVault, required apps.”</blockquote><p class="job-out"><b>You get</b> a pass/fail readiness report before IT spends a minute on the laptop.</p></div>
+        </li>
+        <li class="job">
+          <div class="job-who"><small>Remote IT and helpdesk</small><h3>Diagnostics for “why is my Mac slow?”</h3><p>The agent gathers the facts you’d ask for over the phone, in the order you’d ask.</p></div>
+          <div><blockquote class="job-task">“Find out why this Mac is slow. Check disk, memory and top processes.”</blockquote><p class="job-out"><b>You get</b> disk, memory and the top offenders, plus a likely cause.</p></div>
+        </li>
+        <li class="job">
+          <div class="job-who"><small>Family tech support</small><h3>Desktop clean-up and disk space rescue</h3><p>Skip the 40-minute call. The agent is instructed to move files rather than delete them, and to log every move so it can be undone.</p></div>
+          <div><blockquote class="job-task">“Sort the Desktop into folders by type and tell Dad what is taking up space.”</blockquote><p class="job-out"><b>You get</b> a tidy Desktop, a plain-English guide and an undo log.</p></div>
+        </li>
+        <li class="job">
+          <div class="job-who"><small>MSPs and agencies</small><h3>Setting up client machines</h3><p>Send the same job to every client. Each one runs a single line and you get a comparable report.</p></div>
+          <div><blockquote class="job-task">“Audit this client Mac and list what is installed, what is out of date and what is missing.”</blockquote><p class="job-out"><b>You get</b> consistent audits across clients without a site visit.</p></div>
+        </li>
+        <li class="job">
+          <div class="job-who"><small>Schools and labs</small><h3>Student and lab machine checks</h3><p>Hand a code to whoever is at the machine and collect results without visiting every desk.</p></div>
+          <div><blockquote class="job-task">“Report free disk space and macOS version on this lab Mac.”</blockquote><p class="job-out"><b>You get</b> a fleet snapshot gathered by the people sitting there.</p></div>
+        </li>
+        <li class="job">
+          <div class="job-who"><small>Small businesses</small><h3>IT help without an IT department</h3><p>Whoever is the unofficial computer person writes the job; staff only paste a line.</p></div>
+          <div><blockquote class="job-task">“Check backups, disk space and system updates on the front-desk Mac.”</blockquote><p class="job-out"><b>You get</b> routine health checks without hiring or a contractor visit.</p></div>
+        </li>
+        <li class="job">
+          <div class="job-who"><small>Support and asset teams</small><h3>Info for tickets and asset inventory</h3><p>Stop asking “can you go to About This Mac and read me the number?” and get it in one pass.</p></div>
+          <div><blockquote class="job-task">“Collect macOS version, FileVault status, serial number and installed apps.”</blockquote><p class="job-out"><b>You get</b> a structured record you can paste straight into a ticket or sheet.</p></div>
+        </li>
+        <li class="job">
+          <div class="job-who"><small>Anyone with a messy folder</small><h3>File organisation projects</h3><p>Works inside the one folder you choose. Duplicates are flagged and moved aside rather than erased.</p></div>
+          <div><blockquote class="job-task">“Group Downloads into Documents, Images, Installers and Other. Flag duplicates.”</blockquote><p class="job-out"><b>You get</b> sorted folders, a list of duplicates and the undo log.</p></div>
+        </li>
+      </ul>
+      <p class="honest"><b>Honest about v0.</b> The agent is instructed to stay inside the folder you chose, not to install software and not to use admin rights. Those are rules it follows, not locks: the commands it runs are not sandboxed, so only hand a code to someone you’d trust with that, and watch the live view. It is not a replacement for a full device-management tool. It runs on macOS only for now, and needs Node.js 22+ on the Mac.</p>
+    </div>
+  </div>
+</section>
+
+<section id="roi" aria-labelledby="h-roi">
+  <div class="wrap sec">
+    <div class="sec-head">
+      <h2 id="h-roi">See what an hour of setup call is really costing you.</h2>
+      <p>Every onboarding call burns two people’s time: IT and the new hire. Plug in your numbers and see how much of it comes back.</p>
+    </div>
+    <div class="roi">
+      <form class="calc" id="calc" onsubmit="return false" aria-label="ROI calculator">
+        <div class="field">
+          <label for="hires">New hires per year</label>
+          <input type="number" id="hires" min="0" step="1" value="250" inputmode="numeric">
+        </div>
+        <div class="field">
+          <label for="mins"><span>Minutes saved per hire</span><output id="minsOut" for="mins">50 min</output></label>
+          <input type="range" id="mins" min="20" max="90" step="1" value="50">
+          <p class="hint">Typical laptop setup and onboarding help takes 40 to 60 minutes of hands-on IT time.</p>
+        </div>
+        <div class="field">
+          <label for="people">People on each call</label>
+          <input type="number" id="people" min="1" step="1" value="2" inputmode="numeric">
+          <p class="hint">Default 2: the IT person and the new hire. Both their time counts.</p>
+        </div>
+        <div class="field">
+          <label for="rate">Loaded hourly cost ($)</label>
+          <input type="number" id="rate" min="0" step="1" value="65" inputmode="decimal">
+        </div>
+        <div class="opt">
+          <h3>Optional: support tickets</h3>
+          <div class="field">
+            <label for="tickets">Tickets per month handled by Hired Gun</label>
+            <input type="number" id="tickets" min="0" step="1" value="40" inputmode="numeric">
+          </div>
+          <div class="field">
+            <label for="tmins">Minutes saved per ticket</label>
+            <input type="number" id="tmins" min="0" step="1" value="20" inputmode="numeric">
+            <p class="hint">Ticket time is counted for one person (the support agent) to stay conservative.</p>
+          </div>
+        </div>
+      </form>
+
+      <div>
+        <div class="out-card" aria-live="polite">
+          <h3>Estimated time returned each year</h3>
+          <div class="big"><span id="oHours">417</span> <small>hours</small></div>
+          <div class="out-row">
+            <div><strong id="oDollars">$37,483</strong><span>saved per year</span></div>
+            <div><strong id="oWeeks">14.4</strong><span>work-weeks returned</span></div>
+          </div>
+          <p class="formula">hours = (hires × min per hire × people ÷ 60) + (tickets/mo × 12 × min per ticket ÷ 60)<br>dollars = hours × hourly cost · work-weeks = hours ÷ 40</p>
+        </div>
+        <p class="example"><b>Example at scale:</b> 1,000 hires × 50 min × 2 people = 100,000 minutes ≈ 1,667 hours ≈ 42 work-weeks a year, before counting a single support ticket.</p>
+        <p class="estimate">These figures are estimates based on the inputs you enter. They are not guarantees, and real savings depend on how many jobs you hand to Hired Gun and how long they take today. Model usage costs are not subtracted; they are typically cents per job.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="h-res">
+  <div class="wrap res-grid" style="border-top:2px solid var(--text);padding-top:1.6rem">
+    <div>
+      <h2 id="h-res" style="font-size:clamp(1.9rem,1.2rem + 2.6vw,3rem)">The report comes back structured and ready to use.</h2>
+      <p style="color:var(--text-2);margin-top:1rem;max-width:30rem">No scrolling through a chat log. When the job finishes, the agent hands in a report: a plain-English summary for the person at the computer, and the answer, key findings and changes for you.</p>
+      <ul class="bullets">
+        <li><span><b>Summary</b> in plain language for the person at the keyboard.</span></li>
+        <li><span><b>Answer and key findings</b> for you, easy to paste into a ticket.</span></li>
+        <li><span><b>Changes</b> listed one by one, so nothing is a surprise.</span></li>
+      </ul>
+      <div class="deliver" aria-label="Where reports go">
+        <span class="chip"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-mail"/></svg>Email (optional)</span>
+        <span class="chip">Slack, Discord or webhook (optional)</span>
+        <span class="chip">Always on your dashboard</span>
+      </div>
+    </div>
+
+    <article class="ticket rc" aria-label="Example report">
+      <div class="rc-head">
+        <div><strong>Laptop readiness: Maya’s MacBook</strong><small>Example report. Finished in 2m 14s</small></div>
+        <span class="done"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 10.5l3.2 3.2L15 6.8"/></svg>Done</span>
+      </div>
+      <div class="ticket-tear" aria-hidden="true"></div>
+      <div class="rc-body">
+        <div class="rc-sec"><h3>Summary for Maya</h3><p>Your laptop is nearly ready. Everything important is set up. One thing is left: a macOS update, which we will schedule for tonight.</p></div>
+        <div class="rc-sec"><h3>Answer</h3><p class="ans">Ready for day one, with one fix needed: macOS is two versions behind.</p></div>
+        <div class="rc-sec">
+          <h3>Key findings</h3>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th scope="col">Check</th><th scope="col">Result</th><th scope="col">Status</th></tr></thead>
+              <tbody>
+                <tr><th scope="row">macOS</th><td>Two versions behind</td><td class="flag">Update</td></tr>
+                <tr><th scope="row">FileVault</th><td>On</td><td class="pass">Pass</td></tr>
+                <tr><th scope="row">Free disk</th><td>61 GB of 245 GB</td><td class="pass">Pass</td></tr>
+                <tr><th scope="row">Required apps</th><td>6 of 6 present</td><td class="pass">Pass</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="rc-sec"><h3>Changes</h3><ul class="chg"><li><b>wrote</b> laptop-readiness.md</li><li><b>moved</b> nothing</li></ul></div>
+      </div>
+    </article>
+  </div>
+</section>
+
+<section id="security" aria-labelledby="h-sec">
+  <div class="wrap sec">
+    <div class="sec-head">
+      <h2 id="h-sec">Made to be handed to someone who isn’t technical.</h2>
+      <p>Some protections are built into the system. Others are rules the agent is told to follow. We keep the two apart so you know which is which.</p>
+    </div>
+    <div>
+      <h3 class="rules-title">Built into the system</h3>
+      <ul class="rules">
+        <li class="rule"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-key"/></svg><div><h4>The AI key never reaches their Mac</h4><p>The server proxies every model call. Their machine only ever holds a short-lived session token, never your provider key.</p></div></li>
+        <li class="rule"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-stop"/></svg><div><h4>Revoke a code, stop the agent</h4><p>Revoke a code or stop a session and its next model call is refused. The agent has no model access without the server’s say-so.</p></div></li>
+        <li class="rule"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-once"/></svg><div><h4>One-use codes</h4><p>A one-use code works once; run it again and it’s rejected. You can also set a code to last until the job succeeds, or for a set number of hours.</p></div></li>
+        <li class="rule"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-eye"/></svg><div><h4>You watch every command live</h4><p>Every command the agent runs, its output (up to 2,000 characters each) and the files it opens stream to your dashboard, with the option to send instructions or stop.</p></div></li>
+        <li class="rule"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-broom"/></svg><div><h4>Cleans up after itself</h4><p>When it exits normally, it removes its temporary files from the Mac. A power loss or force-quit can leave them behind.</p></div></li>
+      </ul>
+      <h3 class="rules-title">Rules the agent follows</h3>
+      <p class="rules-note">These are instructions given to the agent, not technical locks. Its commands are not sandboxed, so treat them as strong guidance rather than a guarantee.</p>
+      <ul class="rules soft">
+        <li class="rule"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-folder"/></svg><div><h4>Works in one folder</h4><p>You choose the working folder. The agent is told to change things only inside it. It may run read-only commands elsewhere to look things up, such as the macOS version or installed apps.</p></div></li>
+        <li class="rule"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-move"/></svg><div><h4>Moves instead of deleting</h4><p>The agent is told not to delete files, empty the Trash or overwrite anything. Anything that has to go is moved aside.</p></div></li>
+        <li class="rule"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-undo"/></svg><div><h4>Logs every move for undo</h4><p>The agent is told to write each move to an undo log in the folder, so a clean-up can be reversed.</p></div></li>
+        <li class="rule"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-lock"/></svg><div><h4>No sudo, installs or network</h4><p>The agent is told never to use admin rights, install software, or download or upload anything.</p></div></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="faq" aria-labelledby="h-faq">
+  <div class="wrap sec">
+    <div class="sec-head">
+      <h2 id="h-faq">Questions people ask before they send a code.</h2>
+    </div>
+    <div class="faq">
+      <details><summary>What do they need?</summary><div class="ans">A Mac with Node.js 22 or newer, plus Terminal. Node.js is a free installer from nodejs.org, and IT-managed Macs often have it already. If it’s missing or too old, Hired Gun explains what to do. (If Node.js isn’t installed at all, macOS just says <code class="inline">command not found: npx</code>.) They don’t need an account or an API key.</div></details>
+      <details><summary>Does it install anything permanently?</summary><div class="ans">No permanent install. <code class="inline">npx</code> fetches the helper on demand, it runs once, and it removes its temporary files when it exits normally. A power loss or force-quit can leave them behind. The agent is also told not to install software.</div></details>
+      <details><summary>What can it see?</summary><div class="ans">It’s told to work inside the one folder you pick for the job and to change nothing outside it, though it may run read-only commands elsewhere to look up information such as the macOS version or installed apps. Its commands, their output (up to 2,000 characters each) and the files it opens are streamed to you, so you see what it sees. macOS may ask the person to allow Terminal to access that folder, which is normal.</div></details>
+      <details><summary>What if it goes wrong?</summary><div class="ans">You can stop it from your dashboard at any time, and the person can press Ctrl+C. The agent is told to move files rather than delete them and to write each move to an undo log in the folder, but that is a rule it follows, not a technical lock. Revoking the code cuts off its access to the model immediately.</div></details>
+      <details><summary>Which models does it use?</summary><div class="ans">Models run through Vercel AI Gateway, so you can pick from Claude, GPT, DeepSeek and others per job. The model call goes through the server, never directly from the recipient’s Mac.</div></details>
+      <details><summary>Who sees the commands and files?</summary><div class="ans">You do, as the operator: the dashboard shows each command, its output (up to 2,000 characters) and the files the agent opens. That same content is also sent to the model provider, through Vercel AI Gateway, so the model can do the job. Don’t point it at a folder whose contents you wouldn’t want you or the provider to see.</div></details>
+      <details><summary>Does it work on Windows?</summary><div class="ans">Not yet. Hired Gun is macOS only today. Windows and Linux aren’t supported in this version.</div></details>
+      <details><summary>What does it cost?</summary><div class="ans">The cost is model usage. For a typical job like a folder clean-up or a system check that is usually cents per job. The exact amount depends on the model you choose and how long the job runs.</div></details>
+      <details><summary>Does the person need an account or API key?</summary><div class="ans">No. They need the code, Terminal and Node.js 22 or newer. Everything else, including the model access, is handled on your side.</div></details>
+      <details><summary>Why does the command say “gigagent”?</summary><div class="ans">Hired Gun was called GigAgent until October 2026. The command keeps its old name for now so that codes, notes and links people already have keep working. Renaming the package is a separate step that hasn’t been done.</div></details>
+    </div>
+  </div>
+</section>
+
+<section class="final" aria-labelledby="h-final">
+  <div class="wrap">
+    <h2 id="h-final">Stop driving over. Send a code.</h2>
+    <p>Write the job, share the code, and watch it get done. Your first one takes about a minute.</p>
+    <div class="cta-row">
+      <a class="btn btn-primary btn-lg" href="/dashboard">Open dashboard</a>
+      <a class="btn btn-lg" href="#how">See how it works</a>
+    </div>
+  </div>
+</section>
+
 </main>
 
+<footer>
+  <div class="wrap foot">
+    <a class="lockup" href="/" aria-label="Hired Gun home"><img src="/assets/logo.svg" alt="" width="26" height="26">Hired Gun</a>
+    <nav aria-label="Footer">
+      <a href="#how">How it works</a><a href="#use-cases">Jobs</a><a href="#roi">ROI</a><a href="#security">Trust</a><a href="#faq">FAQ</a><a href="/dashboard">Dashboard</a>
+    </nav>
+    <span>© 2026 Hired Gun</span>
+  </div>
+</footer>
+
 <script>
-(() => {
-  'use strict';
-  const KEY = 'gigSlaveAdminToken';
-  const LIVE = ['done', 'failed', 'killed'];
-  const POLICY = { one_use: 'one use', on_complete: 'until complete', ttl: 'time limit' };
-  const DOT = { working: 'green', connecting: 'green', idle: 'gray', done: 'blue', failed: 'red', killed: 'red' };
-  const $ = id => document.getElementById(id);
-  const enc = encodeURIComponent;
-  const st = { token: null, invites: [], es: null, sel: null, events: [], seen: new Set(), lastId: 0, selReport: null };
-
-  // ---- DOM helpers: everything is built with text nodes, never innerHTML ----
-  function h(tag, props, ...kids) {
-    const n = document.createElement(tag);
-    for (const [k, v] of Object.entries(props || {})) {
-      if (v === null || v === undefined || v === false) continue;
-      if (k === 'class') n.className = v;
-      else if (k === 'dataset') Object.assign(n.dataset, v);
-      else n.setAttribute(k, v === true ? '' : String(v));
-    }
-    for (const c of kids.flat()) if (c !== null && c !== undefined && c !== false) n.append(c instanceof Node ? c : String(c));
-    return n;
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var ids = ['hires', 'mins', 'people', 'rate', 'tickets', 'tmins'];
+  var fmt = new Intl.NumberFormat('en-US');
+  function num(id, min) {
+    var v = parseFloat($(id).value);
+    if (!isFinite(v) || v < min) v = min;
+    return v;
   }
-  const fmtTime = ts => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  const fmtDate = ts => new Date(ts).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
-  const ago = ts => { const s = Math.max(0, Math.floor((Date.now() - ts) / 1000)); return s < 3600 ? s + 's ago' : Math.floor(s / 3600) + 'h ago'; };
-  const seenText = ts => (ts ? 'last seen ' + ago(ts) : 'not seen yet');
-  const seenSpan = ts => h('span', { class: 'seen muted small', dataset: { ts: ts || 0 } }, seenText(ts));
-  const dot = status => h('span', { class: 'dot ' + (DOT[status] || 'gray'), title: status });
-  const firstLine = s => (s.split('\n').find(l => l.trim()) || '(no output)').slice(0, 160);
-  const errMsg = (data, res) => (data && (typeof data.error === 'string' ? data.error : data.error && data.error.message)) || 'HTTP ' + res.status;
-  function argText(a) {
-    if (!a || typeof a !== 'object') return '';
-    const v = a.command ?? a.path ?? a.file_path;
-    return v != null ? String(v) : JSON.stringify(a).slice(0, 200);
+  function calc() {
+    var hires = num('hires', 0), mins = num('mins', 0), people = num('people', 1), rate = num('rate', 0);
+    var tickets = num('tickets', 0), tmins = num('tmins', 0);
+    var onboardHours = hires * mins * people / 60;
+    var ticketHours = tickets * 12 * tmins / 60;
+    var hours = onboardHours + ticketHours;
+    var dollars = hours * rate;
+    var weeks = hours / 40;
+    $('minsOut').textContent = mins + ' min';
+    $('oHours').textContent = fmt.format(Math.round(hours));
+    $('oDollars').textContent = '$' + fmt.format(Math.round(dollars));
+    $('oWeeks').textContent = weeks >= 100 ? fmt.format(Math.round(weeks)) : weeks.toFixed(1);
   }
-  function sessionAlive(s, inv) {
-    if (!inv || LIVE.includes(s.status)) return false;
-    if (inv.status === 'expired' || inv.status === 'revoked') return false;
-    return !(inv.expires_at && inv.expires_at <= Date.now());
-  }
-  const findInvite = id => st.invites.find(i => i.id === id);
-  function findSession(id) {
-    for (const inv of st.invites) {
-      const s = (inv.sessions || []).find(x => x.id === id);
-      if (s) return { s, inv };
-    }
-    return null;
-  }
-  const show = (el, e) => { if (!e.auth) el.textContent = e.message; };
-  async function act(el, fn) {
-    el.textContent = '';
-    try { return await fn(); } catch (e) { show(el, e); return null; }
-  }
-
-  // ---- auth and API ----
-  function authFail(msg) { const e = new Error(msg); e.auth = true; return e; }
-  function closeStream() { if (st.es) { st.es.close(); st.es = null; } }
-  function showAuth(msg, cancellable) {
-    closeStream();
-    $('app').hidden = true;
-    $('auth').hidden = false;
-    $('tokenErr').textContent = msg || '';
-    $('tokenCancel').hidden = !cancellable;
-    $('changeToken').hidden = true;
-    $('tokenInput').focus();
-  }
-  async function api(method, path, body) {
-    if (!st.token) { showAuth('', false); throw authFail('no token'); }
-    let res;
-    try {
-      res = await fetch(path, {
-        method,
-        headers: { Authorization: 'Bearer ' + st.token, ...(body ? { 'Content-Type': 'application/json' } : {}) },
-        body: body ? JSON.stringify(body) : undefined,
-      });
-    } catch (e) { throw new Error('Cannot reach the server. ' + e.message); }
-    if (res.status === 401) {
-      st.token = null;
-      try { localStorage.removeItem(KEY); } catch (e) {}
-      showAuth('That admin token was rejected.', false);
-      throw authFail('unauthorized');
-    }
-    const data = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(errMsg(data, res));
-    return data;
-  }
-
-  // ---- loading and live updates ----
-  async function start() {
-    closeStream();
-    $('auth').hidden = true;
-    $('app').hidden = false;
-    $('changeToken').hidden = false;
-    $('conn').textContent = 'connecting…';
-    try { await loadConfig(); } catch (e) { show($('newErr'), e); if (e.auth) return; }
-    try { await loadInvites(); } catch (e) { show($('listErr'), e); if (e.auth) return; }
-    connect();
-  }
-  async function loadConfig() {
-    const cfg = await api('GET', '/api/config');
-    $('model').replaceChildren(...(cfg.models || []).map(m => {
-      const o = h('option', { value: m }, m);
-      o.selected = m === cfg.default_model;
-      return o;
-    }));
-  }
-  async function loadInvites() {
-    const r = await api('GET', '/api/invites');
-    st.invites = r.invites || [];
-    $('listErr').textContent = '';
-    renderInvites();
-    renderDetail();
-  }
-  function upsertInvite(inv) {
-    const cur = findInvite(inv.id);
-    if (cur) Object.assign(cur, inv);
-    else st.invites.unshift({ ...inv, sessions: [] });
-  }
-  function connect() {
-    closeStream();
-    const es = new EventSource('/api/stream?token=' + enc(st.token));
-    st.es = es;
-    let opened = false;
-    es.addEventListener('open', () => {
-      $('conn').textContent = 'live';
-      if (opened) { // reconnect: resync from the server
-        loadInvites().catch(e => show($('listErr'), e));
-        refreshEvents();
-      }
-      opened = true;
+  ids.forEach(function (id) { $(id).addEventListener('input', calc); });
+  calc();
+  // mobile menu: close after choosing a link, and on Escape (returning focus to the button)
+  var menu = document.querySelector('.menu');
+  if (menu) {
+    menu.addEventListener('click', function (e) {
+      if (e.target.closest && e.target.closest('a')) menu.removeAttribute('open');
     });
-    es.addEventListener('event', e => onEvent(JSON.parse(e.data)));
-    es.addEventListener('session', e => onSession(JSON.parse(e.data)));
-    es.addEventListener('invite', e => onInvite(JSON.parse(e.data)));
-    es.addEventListener('error', () => {
-      $('conn').textContent = 'reconnecting…';
-      if (es.readyState !== EventSource.CLOSED) return; // browser retries on its own
-      closeStream();
-      setTimeout(async () => {
-        if (!st.token || $('app').hidden) return;
-        try { await loadInvites(); } catch (e) { if (e.auth) return; show($('listErr'), e); }
-        connect();
-      }, 3000);
+    menu.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && menu.hasAttribute('open')) {
+        menu.removeAttribute('open');
+        menu.querySelector('summary').focus();
+      }
     });
   }
-  function onSession(s) {
-    const inv = findInvite(s.invite_id);
-    if (!inv) { loadInvites().catch(e => show($('listErr'), e)); return; }
-    inv.sessions = inv.sessions || [];
-    const i = inv.sessions.findIndex(x => x.id === s.id);
-    if (i >= 0) inv.sessions[i] = s; else inv.sessions.push(s);
-    const rec = invCards.get(inv.id) || syncInvite(inv);
-    let sr = sessRows.get(s.id);
-    const isNew = !sr;
-    if (isNew) { sr = makeSessionRow(s.id); sessRows.set(s.id, sr); }
-    paintSession(sr, s);
-    if (isNew) insertSessionRow(rec, sr);
-    paintEmpty(rec, inv);
-    if (s.id === st.sel) renderDetail();
-  }
-  function onInvite(inv) {
-    upsertInvite(inv);
-    syncInvite(findInvite(inv.id));
-    renderDetail();
-  }
-  function onEvent(ev) {
-    if (ev.session_id === st.sel) addEvents([ev]);
-  }
-
-  // ---- lists: keyed and incremental ----
-  // A session message touches only its own row; an invite message touches only its header.
-  // renderInvites() is the full pass (initial load and SSE reconnect); it reuses existing nodes.
-  const invCards = new Map();   // invite id -> { card, label, policy, status, meta, sessions, empty }
-  const sessRows = new Map();   // session id -> { id, el, started, dot, who, status, statusText, counts, seen }
-  const noAgents = h('p', { class: 'muted' }, 'No agents yet. Create one above.');
-  // Writes only when the value differs, so unchanged nodes are never touched.
-  const setText = (n, t) => { const v = t == null ? '' : String(t); if (n.textContent !== v) n.textContent = v; };
-  const setHidden = (el, v) => { if (el.hidden !== v) el.hidden = v; };
-
-  function makeInviteCard() {
-    const rec = {
-      label: h('strong', {}),
-      policy: h('span', { class: 'badge' }),
-      status: h('span', { class: 'badge' }),
-      meta: h('div', { class: 'muted small' }),
-      sessions: h('div', {}),
-      empty: h('p', { class: 'muted small' }),
-    };
-    rec.card = h('div', { class: 'invite' },
-      h('div', { class: 'row wrap' }, rec.label, rec.policy, rec.status),
-      rec.meta, rec.sessions, rec.empty);
-    return rec;
-  }
-  function makeSessionRow(sid) {
-    const rec = {
-      id: sid, started: 0,
-      dot: h('span', { class: 'dot' }),
-      who: h('strong', {}),
-      status: h('span', { class: 'muted small' }),
-      statusText: h('div', { class: 'small' }),
-      counts: document.createTextNode(''),
-      seen: seenSpan(0),
-    };
-    rec.el = h('button', { type: 'button', class: 'row-s', dataset: { sid } },
-      rec.dot,
-      h('div', { class: 'grow' },
-        h('div', {}, rec.who, ' ', rec.status),
-        rec.statusText,
-        h('div', { class: 'muted small' }, rec.counts, rec.seen)));
-    return rec;
-  }
-  function paintInvite(rec, inv) {
-    setText(rec.label, inv.label || '(no label)');
-    setText(rec.policy, POLICY[inv.expiry_policy] || inv.expiry_policy);
-    setText(rec.status, inv.status);
-    setText(rec.meta, `${inv.redemptions} redeemed` + (inv.expires_at ? ` · expires ${fmtDate(inv.expires_at)}` : '') + ` · created ${fmtDate(inv.created_at)}`);
-    paintEmpty(rec, inv);
-  }
-  function paintEmpty(rec, inv) {
-    setText(rec.empty, inv.status === 'pending' ? 'Waiting for the person to enter the code.' : 'No sessions yet.');
-    setHidden(rec.empty, rec.sessions.childElementCount > 0);
-  }
-  function paintSession(sr, s) {
-    const m = s.machine || {};
-    const cls = 'dot ' + (DOT[s.status] || 'gray');
-    const ts = s.last_heartbeat || 0;
-    sr.started = s.started_at;
-    if (sr.dot.className !== cls) sr.dot.className = cls;
-    if (sr.dot.title !== (s.status || '')) sr.dot.title = s.status || '';
-    setText(sr.who, m.hostname ? m.hostname + (m.username ? ` (${m.username})` : '') : 'Not connected yet');
-    setText(sr.status, s.status);
-    setText(sr.statusText, s.status_text || '');
-    setText(sr.counts, `${s.actions} actions · ${s.tokens_in} in / ${s.tokens_out} out · `);
-    if (+sr.seen.dataset.ts !== ts) sr.seen.dataset.ts = ts;
-    setText(sr.seen, seenText(ts));
-    sr.el.classList.toggle('sel', sr.id === st.sel);
-  }
-  // The list is newest-first, so a new row goes before the first older row.
-  function insertSessionRow(rec, sr) {
-    let ref = null;
-    for (const c of rec.sessions.children) {
-      const other = sessRows.get(c.dataset.sid);
-      if (other && other.started < sr.started) { ref = c; break; }
-    }
-    rec.sessions.insertBefore(sr.el, ref);
-  }
-  // Header only: creates the card (at the top) if the invite is new.
-  function syncInvite(inv) {
-    let rec = invCards.get(inv.id);
-    if (!rec) {
-      rec = makeInviteCard();
-      invCards.set(inv.id, rec);
-      const root = $('invites');
-      noAgents.remove();
-      root.insertBefore(rec.card, root.firstChild);
-    }
-    paintInvite(rec, inv);
-    return rec;
-  }
-  // Full pass over one invite's sessions: reuses rows, reorders only when needed.
-  function syncInviteSessions(rec, inv) {
-    const list = [...(inv.sessions || [])].sort((a, b) => b.started_at - a.started_at);
-    const keep = new Set(list.map(s => s.id));
-    for (const el of [...rec.sessions.children]) {
-      if (keep.has(el.dataset.sid)) continue;
-      el.remove();
-      sessRows.delete(el.dataset.sid);
-    }
-    let prev = null;
-    for (const s of list) {
-      let sr = sessRows.get(s.id);
-      if (!sr) { sr = makeSessionRow(s.id); sessRows.set(s.id, sr); }
-      paintSession(sr, s);
-      const at = prev ? prev.nextSibling : rec.sessions.firstChild;
-      if (sr.el !== at) rec.sessions.insertBefore(sr.el, at);
-      prev = sr.el;
-    }
-    paintEmpty(rec, inv);
-  }
-  // Full pass over the whole list (initial load, reconnect). Existing nodes are reused.
-  function renderInvites() {
-    const root = $('invites');
-    const ids = new Set(st.invites.map(i => i.id));
-    for (const [id, rec] of [...invCards]) {
-      if (ids.has(id)) continue;
-      for (const el of rec.sessions.children) sessRows.delete(el.dataset.sid);
-      rec.card.remove();
-      invCards.delete(id);
-    }
-    if (!st.invites.length) {
-      if (root.childNodes.length !== 1 || root.firstChild !== noAgents) root.replaceChildren(noAgents);
-      return;
-    }
-    noAgents.remove();
-    let prev = null;
-    for (const inv of st.invites) {
-      const rec = syncInvite(inv);
-      syncInviteSessions(rec, inv);
-      const at = prev ? prev.nextSibling : root.firstChild;
-      if (rec.card !== at) root.insertBefore(rec.card, at);
-      prev = rec.card;
-    }
-  }
-  function markSelection() {
-    for (const sr of sessRows.values()) sr.el.classList.toggle('sel', sr.id === st.sel);
-  }
-
-  // ---- session detail ----
-  async function openSession(sid) {
-    st.sel = sid; st.events = []; st.seen = new Set(); st.lastId = 0; st.selReport = null;
-    $('log').replaceChildren();
-    $('instrErr').textContent = '';
-    markSelection();
-    renderDetail();
-    if (window.innerWidth <= 800) $('detail').scrollIntoView({ behavior: 'smooth' });
-    const r = await act($('actErr'), () => api('GET', `/api/sessions/${enc(sid)}/events`));
-    if (r && st.sel === sid) addEvents(r.events || []);
-  }
-  async function refreshEvents() {
-    const sid = st.sel;
-    if (!sid) return;
-    const r = await act($('actErr'), () => api('GET', `/api/sessions/${enc(sid)}/events?after=${st.lastId}`));
-    if (r && st.sel === sid) addEvents(r.events || []);
-  }
-  function addEvents(list) {
-    const log = $('log');
-    const nearBottom = !log.childElementCount || log.scrollHeight - log.scrollTop - log.clientHeight < 40;
-    const added = [];
-    let outOfOrder = false, reportNew = false;
-    for (const ev of list) {
-      if (st.seen.has(ev.id)) continue;
-      st.seen.add(ev.id);
-      if (ev.id < st.lastId) outOfOrder = true;
-      st.lastId = Math.max(st.lastId, ev.id);
-      st.events.push(ev);
-      added.push(ev);
-      if (ev.type === 'report') { st.selReport = ev.data && ev.data.text; reportNew = true; }
-    }
-    if (!added.length) return;
-    if (outOfOrder) {
-      st.events.sort((a, b) => a.id - b.id);
-      log.replaceChildren(rowsFragment(st.events));
-    } else {
-      log.append(rowsFragment(added));
-    }
-    if (nearBottom) log.scrollTop = log.scrollHeight;
-    if (reportNew) renderDetail();
-  }
-  function rowsFragment(list) {
-    const f = document.createDocumentFragment();
-    for (const ev of list) f.append(logRow(ev));
-    return f;
-  }
-  function logRow(ev) {
-    const d = ev.data || {};
-    const msg = [];
-    switch (ev.type) {
-      case 'tool_call':
-        msg.push(h('b', {}, d.tool || 'tool'), ' ', argText(d.args));
-        break;
-      case 'tool_result': {
-        const out = d.output == null ? '' : String(d.output);
-        msg.push(h('span', { class: d.ok ? 'ok' : 'bad' }, d.ok ? 'ok' : 'failed'), ' ', d.tool || '');
-        if (out) msg.push(h('details', {}, h('summary', {}, firstLine(out)), h('pre', {}, out)));
-        break;
-      }
-      case 'assistant': msg.push(d.text || ''); break;
-      case 'instruction': msg.push('You: ' + (d.text || '')); break;
-      case 'error': msg.push(h('span', { class: 'bad' }, d.message || 'error')); break;
-      case 'status': msg.push(d.text || d.status || ''); break;
-      case 'report': msg.push((d.success ? 'Finished: ' : 'Stopped: ') + (d.text || '')); break;
-      default: msg.push(JSON.stringify(d).slice(0, 300));
-    }
-    return h('div', { class: 'ln' },
-      h('span', { class: 't' }, fmtTime(ev.ts)),
-      h('span', { class: 'tag ' + ev.type }, ev.type),
-      h('span', { class: 'm' }, msg));
-  }
-  function renderDetail() {
-    const f = st.sel && findSession(st.sel);
-    $('detail').hidden = !f;
-    if (!f) { st.sel = null; return; }
-    const { s, inv } = f;
-    const m = s.machine || {};
-    const alive = sessionAlive(s, inv);
-    const report = s.report || st.selReport;
-    const machine = [m.username && `user ${m.username}`, m.platform && `${m.platform} ${m.arch || ''}`].filter(Boolean).join(' · ') || 'No machine info yet';
-    $('dTitle').textContent = m.hostname || inv.label;
-    $('dHead').replaceChildren(
-      h('div', { class: 'row wrap' }, dot(s.status), h('strong', {}, s.status), s.status_text ? h('span', {}, s.status_text) : null),
-      h('div', { class: 'muted small' }, `Invite "${inv.label}" · ${POLICY[inv.expiry_policy] || inv.expiry_policy} · ${inv.status}`),
-      h('div', { class: 'muted small' }, machine),
-      h('div', { class: 'muted small' }, `started ${fmtDate(s.started_at)}${s.ended_at ? ' · ended ' + fmtDate(s.ended_at) : ''}`),
-      h('div', { class: 'small' }, `${s.actions} actions · tokens ${s.tokens_in} in / ${s.tokens_out} out · `, seenSpan(s.last_heartbeat)));
-    $('dReport').hidden = !report;
-    $('dReport').replaceChildren(h('strong', {}, 'Final report'), h('div', { class: 'reptext' }, report || ''));
-    $('instrText').disabled = !alive;
-    $('instrBtn').disabled = !alive;
-    $('instrText').placeholder = alive ? 'Send an instruction to the agent' : 'This agent is no longer running';
-    $('killBtn').disabled = !alive;
-    $('revokeBtn').disabled = inv.status === 'revoked';
-  }
-
-  // ---- actions ----
-  $('invites').addEventListener('click', e => {
-    const row = e.target.closest('[data-sid]');
-    if (row) openSession(row.dataset.sid);
-  });
-  $('dClose').addEventListener('click', () => { st.sel = null; markSelection(); renderDetail(); });
-  $('instrForm').addEventListener('submit', async e => {
-    e.preventDefault();
-    const sid = st.sel;
-    const text = $('instrText').value.trim();
-    if (!sid || !text) return;
-    const ok = await act($('instrErr'), () => api('POST', `/api/sessions/${enc(sid)}/instructions`, { text }));
-    if (ok) $('instrText').value = '';
-  });
-  $('killBtn').addEventListener('click', async () => {
-    const sid = st.sel;
-    if (!sid || !confirm('Stop this agent now? It will not finish the task.')) return;
-    await act($('actErr'), () => api('POST', `/api/sessions/${enc(sid)}/kill`));
-  });
-  $('revokeBtn').addEventListener('click', async () => {
-    const f = st.sel && findSession(st.sel);
-    if (!f || !confirm(`Revoke "${f.inv.label}"? Every live agent from this invite will be stopped.`)) return;
-    const ok = await act($('actErr'), () => api('POST', `/api/invites/${enc(f.inv.id)}/revoke`));
-    if (ok) { f.inv.status = 'revoked'; syncInvite(f.inv); renderDetail(); }
-  });
-
-  // new agent form
-  $('policy').addEventListener('change', () => { $('ttlBox').hidden = $('policy').value !== 'ttl'; });
-  $('ttlPreset').addEventListener('change', () => { $('ttlCustomBox').hidden = $('ttlPreset').value !== 'custom'; });
-  $('newForm').addEventListener('submit', async e => {
-    e.preventDefault();
-    const err = $('newErr');
-    err.textContent = '';
-    const body = {
-      label: $('nLabel').value.trim(),
-      task: $('nTask').value.trim(),
-      working_dir: $('nDir').value.trim() || '~/Desktop',
-      model: $('model').value || undefined,
-      expiry_policy: $('policy').value,
-    };
-    if (!body.label || !body.task) { err.textContent = 'Label and task are required.'; return; }
-    if (body.expiry_policy === 'ttl') {
-      body.ttl_hours = $('ttlPreset').value === 'custom' ? Number($('ttlCustom').value) : Number($('ttlPreset').value);
-      if (!(body.ttl_hours > 0)) { err.textContent = 'Enter a number of hours.'; return; }
-    }
-    $('newBtn').disabled = true;
-    const r = await act(err, () => api('POST', '/api/invites', body));
-    $('newBtn').disabled = false;
-    if (!r) return;
-    upsertInvite(r.invite);
-    $('codeBig').textContent = r.code;
-    $('cmd').textContent = r.command;
-    $('result').hidden = false;
-    syncInvite(findInvite(r.invite.id));
-  });
-  async function copy(text, btn) {
-    const label = btn.textContent;
-    try { await navigator.clipboard.writeText(text); btn.textContent = 'Copied'; }
-    catch (e) { btn.textContent = 'Copy failed'; }
-    setTimeout(() => { btn.textContent = label; }, 1500);
-  }
-  $('copyCode').addEventListener('click', e => copy($('codeBig').textContent, e.currentTarget));
-  $('copyCmd').addEventListener('click', e => copy($('cmd').textContent, e.currentTarget));
-
-  // token form
-  $('tokenForm').addEventListener('submit', e => {
-    e.preventDefault();
-    const t = $('tokenInput').value.trim();
-    if (!t) { $('tokenErr').textContent = 'Paste the admin token.'; return; }
-    st.token = t;
-    try { localStorage.setItem(KEY, t); } catch (e) {}
-    $('tokenInput').value = '';
-    start();
-  });
-  $('tokenCancel').addEventListener('click', () => start());
-  $('changeToken').addEventListener('click', e => { e.preventDefault(); showAuth('', true); });
-
-  // keep relative times fresh
-  setInterval(() => document.querySelectorAll('.seen').forEach(n => setText(n, seenText(+n.dataset.ts))), 5000);
-
-  // boot
-  let saved = null;
-  try { saved = localStorage.getItem(KEY); } catch (e) {}
-  if (saved) { st.token = saved; start(); }
-  else showAuth('', false);
 })();
 </script>
 </body>

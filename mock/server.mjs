@@ -1,32 +1,50 @@
-// Scripted OpenAI-compatible upstream for offline gig-slave tests (no tokens spent).
+// Scripted OpenAI-compatible upstream for offline Hired Gun tests (no tokens spent).
 //
 //   import { startMock } from "../mock/server.mjs";   // in tests
 //   node mock/server.mjs                              // standalone, PORT or 8788
 //
+// Accepts one or more API keys (startMock({ apiKeys: [...] }), or the older
+// startMock({ apiKey }), or MOCK_API_KEYS / MOCK_API_KEY when run standalone).
+// Every request is recorded in `requests`, including the Authorization header it
+// arrived with, so tests can check which key each route used.
+//
 // Scenarios are chosen from the text of the first user message:
 //   "[e2e:slow]" -> always a bash call that sleeps 30s
-//   anything else -> "organize" script: bash mv, then write undo log, then a final text reply
+//   anything else -> "organize" script:
+//     bash mv -> write undo log -> submit_report tool call -> final text
 // The step is the number of tool-result messages already in the request.
 
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
 
-const DEFAULT_API_KEY = "mock-upstream-key";
+const DEFAULT_API_KEYS = ["mock-upstream-key"];
 
 const ORGANIZE_COMMAND =
-  "mkdir -p Images Documents Music && mv photo1.png photo2.jpg Images/ && mv report.pdf notes.txt Documents/ && mv song.mp3 Music/";
+  "mkdir -p Pictures Documents Music && mv photo1.png photo2.jpg Pictures/ && mv report.pdf notes.txt Documents/ && mv song.mp3 Music/";
 
 const UNDO_MOVES = [
-  { from: "photo1.png", to: "Images/photo1.png" },
-  { from: "photo2.jpg", to: "Images/photo2.jpg" },
+  { from: "photo1.png", to: "Pictures/photo1.png" },
+  { from: "photo2.jpg", to: "Pictures/photo2.jpg" },
   { from: "report.pdf", to: "Documents/report.pdf" },
   { from: "notes.txt", to: "Documents/notes.txt" },
   { from: "song.mp3", to: "Music/song.mp3" },
 ];
 
+const REPORT_ARGS = {
+  success: true,
+  summary: "I sorted your Desktop into Pictures, Documents and Music.",
+  answer: "Your Desktop had 5 files: 2 photos, 2 documents, 1 song.",
+  findings: [{ label: "Files sorted", value: "5" }],
+  changes: [
+    "Moved 2 photos into Pictures/",
+    "Moved 2 documents into Documents/",
+    "Moved 1 song into Music/",
+  ],
+};
+
 const FINAL_TEXT =
-  "All done! I sorted your Desktop into 3 folders: Images (2 files), Documents (2 files) and Music (1 file). Nothing was deleted, and a list of every move is saved in .gig-slave-undo.json.";
+  "All done! I sorted your Desktop into 3 folders: Pictures (2 files), Documents (2 files) and Music (1 file). Nothing was deleted, and a list of every move is saved in .gigagent-undo.json.";
 
 const USAGE = { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 };
 const PAUSE_MS = 20;
@@ -70,9 +88,12 @@ function planStep(body) {
     return {
       kind: "tool",
       name: "write",
-      args: { path: ".gig-slave-undo.json", content: JSON.stringify(UNDO_MOVES, null, 2) },
+      args: { path: ".gigagent-undo.json", content: JSON.stringify(UNDO_MOVES, null, 2) },
       step,
     };
+  }
+  if (step === 2) {
+    return { kind: "tool", name: "submit_report", args: REPORT_ARGS, step };
   }
   return { kind: "text", text: FINAL_TEXT, step };
 }
@@ -176,6 +197,11 @@ async function streamResponse(res, plan, { id, created, model, callId }) {
   res.end();
 }
 
+function bearerToken(auth) {
+  if (typeof auth !== "string" || !auth.startsWith("Bearer ")) return null;
+  return auth.slice("Bearer ".length);
+}
+
 async function handleChat(req, res, ctx) {
   const raw = await readBody(req);
   let body = null;
@@ -199,7 +225,7 @@ async function handleChat(req, res, ctx) {
     lastUserText: lastUser ? textOf(lastUser.content) : "",
   });
 
-  if (auth !== `Bearer ${ctx.apiKey}`) {
+  if (!ctx.apiKeys.includes(bearerToken(auth))) {
     return sendJson(res, 401, { error: { message: "bad key" } });
   }
   if (!body || typeof body !== "object") {
@@ -251,9 +277,14 @@ function makeHandler(ctx) {
   };
 }
 
-export async function startMock({ port = 0, apiKey = DEFAULT_API_KEY } = {}) {
+export async function startMock({ port = 0, apiKey, apiKeys } = {}) {
+  const keys = Array.isArray(apiKeys) && apiKeys.length > 0
+    ? apiKeys
+    : apiKey !== undefined
+      ? [apiKey]
+      : DEFAULT_API_KEYS;
   const requests = [];
-  const ctx = { apiKey, requests, debug: process.env.MOCK_DEBUG === "1" };
+  const ctx = { apiKeys: keys, requests, debug: process.env.MOCK_DEBUG === "1" };
   const server = createServer(makeHandler(ctx));
 
   await new Promise((resolve, reject) => {
@@ -282,6 +313,11 @@ const isMain =
 
 if (isMain) {
   const port = Number(process.env.PORT) || 8788;
-  const mock = await startMock({ port, apiKey: process.env.MOCK_API_KEY || DEFAULT_API_KEY });
+  const keys = process.env.MOCK_API_KEYS
+    ? process.env.MOCK_API_KEYS.split(",").map((k) => k.trim()).filter(Boolean)
+    : process.env.MOCK_API_KEY
+      ? [process.env.MOCK_API_KEY]
+      : DEFAULT_API_KEYS;
+  const mock = await startMock({ port, apiKeys: keys });
   console.log(`mock upstream listening on ${mock.url}`);
 }

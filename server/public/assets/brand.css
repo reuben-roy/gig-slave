@@ -1,0 +1,179 @@
+/* Hired Gun: shared design tokens and primitives for the landing page and the dashboard.
+   Direction and rationale: DESIGN.md. Fonts are self-hosted (SIL OFL, see assets/fonts/). */
+
+@font-face {
+  font-family: "Zilla Slab";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/assets/fonts/zilla-slab-latin-600-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Zilla Slab";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/assets/fonts/zilla-slab-latin-700-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Hanken Grotesk";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/assets/fonts/hanken-grotesk-latin-wght-normal.woff2") format("woff2");
+}
+
+:root {
+  color-scheme: light dark;
+
+  --font-display: "Zilla Slab", Rockwell, "Roboto Slab", Georgia, serif;
+  --font-sans: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  /* ground and text */
+  --bg: #e9eef2;            /* bleached denim */
+  --surface: #fbfcfd;       /* ticket stock */
+  --surface-2: #eef2f6;
+  --border: #cbd4dd;
+  --border-strong: #77879b; /* 3.1:1+ on every ground: control boundaries */
+  --text: #14213a;          /* denim ink */
+  --text-2: #3a4862;
+  --text-3: #56647d;
+
+  /* brand */
+  --ink: #14213a;           /* fixed dark: top bar, terminal, text on brass */
+  --ink-2: #1d2d4d;
+  --chalk: #e8eef6;         /* fixed light: text on ink */
+  --chalk-2: #b3c0d3;
+  --brass: #f2b632;         /* the one accent (fills only on light grounds) */
+  --brass-hover: #f7c85a;
+  --brass-text: #7f5000;    /* brass when used as text on a light ground */
+  --brass-soft: #fbefd0;
+
+  /* status: always paired with an icon or a word */
+  --ok: #1b6b49;      --ok-soft: #ddefe6;
+  --bad: #b3321b;     --bad-soft: #f8e3dd;
+  --warn: #7f5000;    --warn-soft: #fbefd0;
+  --info: #2b5fa0;    --info-soft: #dfeaf7;
+
+  --focus: #14213a;
+  --radius-sm: 6px;   /* controls */
+  --radius: 10px;     /* panels */
+  --radius-lg: 14px;  /* ticket, dialogs */
+  --shadow-sm: 0 1px 2px rgba(20, 33, 58, 0.08);
+  --shadow: 0 1px 2px rgba(20, 33, 58, 0.08), 0 8px 24px -8px rgba(20, 33, 58, 0.22);
+  --shadow-lg: 0 18px 48px -12px rgba(20, 33, 58, 0.34);
+  --ring: 0 0 0 2px var(--surface), 0 0 0 4px var(--focus);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b1322;
+    --surface: #111c31;
+    --surface-2: #17243d;
+    --border: #25344f;
+    --border-strong: #5b6d8c;
+    --text: #e8eef6;
+    --text-2: #b3c0d3;
+    --text-3: #8d9cb3;
+
+    --brass-text: #f2b632;
+    --brass-soft: #2b2412;
+
+    --ok: #4fd39a;      --ok-soft: #0f2a21;
+    --bad: #ff8a73;     --bad-soft: #331714;
+    --warn: #f2b632;    --warn-soft: #2b2412;
+    --info: #7db0f2;    --info-soft: #14243d;
+
+    --focus: #f2b632;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -8px rgba(0, 0, 0, 0.6);
+    --shadow-lg: 0 18px 48px -12px rgba(0, 0, 0, 0.7);
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  font-size-adjust: from-font;
+  accent-color: var(--brass-text);
+  scrollbar-color: var(--border-strong) transparent;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: var(--brass); color: var(--ink); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 3px; }
+[hidden] { display: none !important; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 700; line-height: 1.12; margin: 0; text-wrap: balance; }
+code, kbd, pre, .mono { font-family: var(--font-mono); }
+
+/* ---- brand lockup: badge + wordmark ---- */
+.lockup {
+  display: inline-flex; align-items: center; gap: 0.6rem;
+  font-family: var(--font-display); font-weight: 700; font-size: 1.3rem; letter-spacing: -0.01em;
+  color: inherit; text-decoration: none; line-height: 1;
+}
+.lockup img { width: 1.9rem; height: 1.9rem; display: block; flex: none; }
+
+/* ---- buttons ---- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+  min-height: 2.75rem; padding: 0.55rem 1.1rem;
+  font: inherit; font-weight: 650; font-size: 0.95rem; line-height: 1.2; white-space: nowrap;
+  color: var(--text); background: var(--surface);
+  border: 1.5px solid var(--border-strong); border-radius: var(--radius-sm);
+  cursor: pointer; text-decoration: none;
+  transition: background-color 0.12s, border-color 0.12s, transform 0.08s;
+}
+.btn:hover { border-color: var(--text); }
+.btn:active { transform: translateY(1px); }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: 0.55; cursor: not-allowed; transform: none; }
+.btn-primary { background: var(--brass); color: var(--ink); border-color: var(--ink); }
+.btn-primary:hover { background: var(--brass-hover); border-color: var(--ink); }
+.btn-quiet { background: transparent; border-color: transparent; color: var(--text-2); }
+.btn-quiet:hover { background: var(--surface-2); border-color: transparent; color: var(--text); }
+.btn-danger { color: var(--bad); border-color: var(--bad); background: transparent; }
+.btn-danger:hover { background: var(--bad-soft); border-color: var(--bad); }
+.btn-danger-solid { background: var(--bad); border-color: var(--bad); color: #fff; }
+.btn-danger-solid:hover { background: var(--bad); border-color: var(--bad); filter: brightness(0.92); }
+@media (prefers-color-scheme: dark) { .btn-danger-solid { color: #240c07; } }
+.btn-sm { min-height: 2.25rem; padding: 0.3rem 0.8rem; font-size: 0.85rem; }
+.btn-lg { min-height: 3.1rem; padding: 0.7rem 1.4rem; font-size: 1rem; }
+.btn-block { width: 100%; }
+@media (pointer: coarse) { .btn-sm { min-height: 2.75rem; } }
+
+/* ---- the ticket: the product's one memorable object ---- */
+.ticket {
+  position: relative;
+  background: var(--surface);
+  border: 1.5px solid var(--text);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+/* notches where the tear line meets the edges */
+.ticket-tear {
+  position: relative; height: 0; margin: 0 -1.5px;
+  border-top: 2px dashed var(--border-strong);
+}
+.ticket-tear::before, .ticket-tear::after {
+  content: ""; position: absolute; top: -0.7rem; width: 1.4rem; height: 1.4rem; border-radius: 50%;
+  background: var(--bg); border: 1.5px solid var(--text);
+}
+.ticket-tear::before { left: -0.8rem; clip-path: inset(0 0 0 50%); }
+.ticket-tear::after { right: -0.8rem; clip-path: inset(0 50% 0 0); }
+
+@media (forced-colors: active) {
+  .btn-primary { border-color: ButtonText; }
+  .ticket, .ticket-tear::before, .ticket-tear::after { border-color: CanvasText; }
+}

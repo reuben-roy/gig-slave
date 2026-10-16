@@ -1,10 +1,10 @@
 {
-  "name": "gig-slave",
-  "version": "0.1.0",
-  "description": "One-command remote helper: type a code, a helper agent does the task on your Mac, then removes itself.",
+  "name": "gigagent",
+  "version": "0.2.0",
+  "description": "Hired Gun (formerly GigAgent): type a code and a helper does one job on your Mac, then removes itself.",
   "type": "module",
   "bin": {
-    "gig-slave": "dist/index.js"
+    "gigagent": "dist/bin.js"
   },
   "files": [
     "dist"
@@ -12,19 +12,17 @@
   "engines": {
     "node": ">=22"
   },
-  "os": [
-    "darwin"
-  ],
   "scripts": {
     "build": "tsc -p .",
     "prepublishOnly": "npm run build",
-    "postbuild": "chmod +x dist/index.js"
+    "postbuild": "chmod +x dist/bin.js dist/index.js"
   },
   "dependencies": {
     "@mariozechner/pi-coding-agent": "0.73.1",
     "@mariozechner/pi-ai": "0.73.1",
     "@mariozechner/pi-agent-core": "0.73.1",
-    "@mariozechner/pi-tui": "0.73.1"
+    "@mariozechner/pi-tui": "0.73.1",
+    "typebox": "^1.1.24"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

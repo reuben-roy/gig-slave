@@ -4,6 +4,7 @@
 
 import { spawn } from "node:child_process";
 import { existsSync, promises as fsp } from "node:fs";
+import { createServer as createHttpServer } from "node:http";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,14 +15,18 @@ const ROOT = path.resolve(HERE, "..");
 const TMP = path.join(HERE, ".tmp");
 const DESKTOP = path.join(TMP, "Desktop");
 const CLI_TMP = path.join(TMP, "tmp");
-const DB_PATH = path.join(TMP, "db", "gig-slave.db");
+const PGLITE_DIR = path.join(TMP, "pglite");
+const SERVER_ENTRY = path.join(ROOT, "server", "dist", "main.js");
+const CLI_ENTRY = path.join(ROOT, "cli", "dist", "index.js");
 
 const ADMIN_TOKEN = "e2e-admin";
+const GATEWAY_KEY = "mock-gateway-key";
 const UPSTREAM_KEY = "mock-upstream-key";
-const MODEL = "deepseek-v4-pro";
-const TTL_MODEL = "deepseek-flash";
-const CLI_VERSION = "0.1.0";
+const MODEL = "anthropic/claude-haiku-5.5"; // routed to the AI gateway
+const TTL_MODEL = "deepseek-flash"; // routed direct to the upstream
+const CLI_VERSION = "0.2.0";
 const CODE_RE = /^[A-Z2-9]{4}-[A-Z2-9]{4}$/;
+const WEBHOOK_PATH = "/hook";
 const MACHINE = {
   hostname: "e2e-mac",
   platform: "darwin",
@@ -41,6 +46,36 @@ const DESKTOP_FILES = {
   "notes.txt": "notes: buy milk\n",
   "song.mp3": "fake mp3 bytes, song\n",
 };
+
+// Env vars that would make the e2e run depend on the developer's shell or .env.
+const STRIPPED_ENV = [
+  /^GIGAGENT_/,
+  /^GIG_SLAVE_/,
+  /^AI_GATEWAY_/,
+  /^UPSTREAM_/,
+  /^GATEWAY_EXTRA_BODY$/,
+  /^DATABASE_URL$/,
+  /^RESEND_/,
+  /^NOTIFY_FROM$/,
+  /^CRON_SECRET$/,
+  /^ADMIN_TOKEN$/,
+  /^PGLITE_DIR$/,
+  /^DB_PATH$/,
+  /^MODELS$/,
+  /^DEFAULT_MODEL$/,
+  /^PUBLIC_URL$/,
+  /^PORT$/,
+];
+
+function baseEnv() {
+  const env = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value === undefined) continue;
+    if (STRIPPED_ENV.some((re) => re.test(key))) continue;
+    env[key] = value;
+  }
+  return env;
+}
 
 // ---------- failure plumbing ----------
 
@@ -128,9 +163,10 @@ async function fetchInvite(id) {
 }
 
 // Opens the admin SSE stream in the background and collects parsed messages.
+// Tolerates `id:` and `retry:` fields and `: ping` keep-alive comments.
 function openSse(url) {
   const ac = new AbortController();
-  const conn = { ac, status: null, contentType: null, error: null, messages: [] };
+  const conn = { ac, status: null, contentType: null, error: null, messages: [], lastId: null, retry: null };
   (async () => {
     try {
       const res = await fetch(url, { signal: ac.signal, headers: { accept: "text/event-stream" } });
@@ -152,11 +188,20 @@ function openSse(url) {
           const frame = buf.slice(0, idx);
           buf = buf.slice(idx + 2);
           let event = "message";
+          let id = null;
           const dataLines = [];
           for (const line of frame.split("\n")) {
             if (!line || line.startsWith(":")) continue; // keep-alive comments
-            if (line.startsWith("event:")) event = line.slice(6).trim();
-            else if (line.startsWith("data:")) dataLines.push(line.slice(5).replace(/^ /, ""));
+            const colon = line.indexOf(":");
+            const field = colon === -1 ? line : line.slice(0, colon);
+            let value = colon === -1 ? "" : line.slice(colon + 1);
+            if (value.startsWith(" ")) value = value.slice(1);
+            if (field === "event") event = value.trim();
+            else if (field === "data") dataLines.push(value);
+            else if (field === "id") {
+              id = value;
+              conn.lastId = value;
+            } else if (field === "retry") conn.retry = Number(value);
           }
           if (dataLines.length === 0) continue;
           const raw = dataLines.join("\n");
@@ -166,7 +211,7 @@ function openSse(url) {
           } catch {
             data = raw;
           }
-          conn.messages.push({ event, data });
+          conn.messages.push({ event, id, data });
         }
       }
     } catch (err) {
@@ -176,8 +221,49 @@ function openSse(url) {
   return conn;
 }
 
+// Starts a tiny local HTTP listener standing in for a webhook receiver.
+async function startWebhookListener() {
+  const port = await freePort();
+  const posts = [];
+  const srv = createHttpServer((req, res) => {
+    const chunks = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", () => {
+      const text = Buffer.concat(chunks).toString("utf8");
+      let json = null;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = null;
+      }
+      posts.push({ method: req.method, url: req.url ?? "", contentType: req.headers["content-type"] ?? null, text, json });
+      res.writeHead(200, { "content-type": "text/plain" });
+      res.end("ok");
+    });
+    req.on("error", () => res.destroy());
+  });
+  await new Promise((resolve, reject) => {
+    srv.once("error", reject);
+    srv.listen(port, "127.0.0.1", () => {
+      srv.off("error", reject);
+      resolve();
+    });
+  });
+  return {
+    url: `http://127.0.0.1:${port}${WEBHOOK_PATH}`,
+    posts,
+    close: () =>
+      new Promise((resolve) => {
+        srv.close(() => resolve());
+        srv.closeAllConnections();
+      }),
+  };
+}
+
+// Only the mock's known keys are shown; anything else is redacted in messages.
 function redactAuth(auth) {
-  if (typeof auth === "string" && auth.startsWith("Bearer ") && auth !== `Bearer ${UPSTREAM_KEY}`) {
+  const known = [`Bearer ${GATEWAY_KEY}`, `Bearer ${UPSTREAM_KEY}`];
+  if (typeof auth === "string" && auth.startsWith("Bearer ") && !known.includes(auth)) {
     return "\"Bearer <redacted>\"";
   }
   return JSON.stringify(auth);
@@ -212,6 +298,7 @@ const state = {
   serverUrl: "",
   server: null,
   mock: null,
+  webhook: null,
   sse: null,
   lastCli: null,
   live: new Set(),
@@ -231,9 +318,9 @@ function spawnTracked(cmd, args, { cwd, env, tail }) {
 }
 
 function runCli(code) {
-  return spawnTracked(process.execPath, [path.join(ROOT, "cli/dist/index.js"), code], {
+  return spawnTracked(process.execPath, [CLI_ENTRY, code], {
     cwd: ROOT,
-    env: { ...process.env, GIG_SLAVE_SERVER: state.serverUrl, TMPDIR: CLI_TMP },
+    env: { ...baseEnv(), GIGAGENT_SERVER: state.serverUrl, TMPDIR: CLI_TMP },
     tail: new Tail(),
   });
 }
@@ -262,7 +349,7 @@ function freePort() {
 async function runBuild() {
   const child = spawnTracked("npm", ["run", "build"], {
     cwd: ROOT,
-    env: process.env,
+    env: baseEnv(),
     tail: state.logs.build,
   });
   if (!(await waitExit(child, 180000))) {
@@ -273,8 +360,8 @@ async function runBuild() {
 }
 
 async function listTempLeftovers() {
-  const names = await fsp.readdir(CLI_TMP);
-  return names.filter((n) => n.startsWith("gig-slave-"));
+  // CLI_TMP is only ever used as the CLI's TMPDIR in this run, so anything in it is a leftover.
+  return fsp.readdir(CLI_TMP);
 }
 
 function printTail(title, tail) {
@@ -288,6 +375,9 @@ function printLogs(failedStep) {
   if (state.lastCli) printTail("CLI output (last lines)", state.lastCli.out);
 }
 
+// State shared between steps of the main organize run.
+const inv1 = { id: null, code: null, sessionId: null };
+
 // ---------- steps ----------
 
 async function runSteps() {
@@ -295,7 +385,6 @@ async function runSteps() {
     await fsp.rm(TMP, { recursive: true, force: true });
     await fsp.mkdir(DESKTOP, { recursive: true });
     await fsp.mkdir(CLI_TMP, { recursive: true });
-    await fsp.mkdir(path.dirname(DB_PATH), { recursive: true });
     for (const [name, content] of Object.entries(DESKTOP_FILES)) {
       await fsp.writeFile(path.join(DESKTOP, name), content);
     }
@@ -307,28 +396,37 @@ async function runSteps() {
   await step("build (npm run build)", async (s) => {
     const r = await runBuild();
     assert(r.code === 0, s, `npm run build failed (exit ${r.code}${r.note ? `, ${r.note}` : ""})`);
+    assert(existsSync(SERVER_ENTRY), s, `${path.relative(ROOT, SERVER_ENTRY)} was not built`);
+    assert(existsSync(CLI_ENTRY), s, `${path.relative(ROOT, CLI_ENTRY)} was not built`);
   });
 
   await step("mock upstream started", async (s) => {
-    state.mock = await startMock({ apiKey: UPSTREAM_KEY });
+    state.mock = await startMock({ apiKeys: [GATEWAY_KEY, UPSTREAM_KEY] });
     assert(/^http:\/\/127\.0\.0\.1:\d+\/v1$/.test(state.mock.url), s, `unexpected mock url ${state.mock.url}`);
+  });
+
+  await step("webhook listener started", async (s) => {
+    state.webhook = await startWebhookListener();
+    assert(state.webhook.url.startsWith("http://127.0.0.1:"), s, `unexpected webhook url ${state.webhook.url}`);
   });
 
   await step("server started", async (s) => {
     const port = await freePort();
     state.serverUrl = `http://127.0.0.1:${port}`;
-    state.server = spawnTracked(process.execPath, ["server/dist/index.js"], {
+    state.server = spawnTracked(process.execPath, [SERVER_ENTRY], {
       cwd: ROOT,
       env: {
-        ...process.env,
+        ...baseEnv(),
         PORT: String(port),
         ADMIN_TOKEN,
+        PGLITE_DIR,
+        MODELS: `${MODEL},${TTL_MODEL}`,
+        DEFAULT_MODEL: MODEL,
+        AI_GATEWAY_BASE_URL: state.mock.url,
+        AI_GATEWAY_API_KEY: GATEWAY_KEY,
         UPSTREAM_BASE_URL: state.mock.url,
         UPSTREAM_API_KEY: UPSTREAM_KEY,
-        DEFAULT_MODEL: TTL_MODEL,
-        MODELS: `${TTL_MODEL},${MODEL}`,
         PUBLIC_URL: state.serverUrl,
-        DB_PATH,
       },
       tail: state.logs.server,
     });
@@ -344,12 +442,31 @@ async function runSteps() {
     }, 15000, "server GET /api/config to return 200");
   });
 
-  await step("GET / serves the dashboard HTML", async (s) => {
+  await step("GET / serves the Hired Gun landing page", async (s) => {
     const r = await fetch(`${state.serverUrl}/`, { signal: AbortSignal.timeout(5000) });
     const contentType = r.headers.get("content-type") ?? "";
-    await r.text();
+    const body = await r.text();
     assert(r.status === 200, s, `GET / returned ${r.status}`);
     assert(contentType.includes("text/html"), s, `GET / content-type is "${contentType}", expected text/html`);
+    assert(body.includes("Hired Gun"), s, "GET / HTML does not contain \"Hired Gun\"");
+  });
+
+  await step("GET /dashboard serves the operator dashboard", async (s) => {
+    const r = await fetch(`${state.serverUrl}/dashboard`, { signal: AbortSignal.timeout(5000) });
+    const contentType = r.headers.get("content-type") ?? "";
+    const body = await r.text();
+    assert(r.status === 200, s, `GET /dashboard returned ${r.status}`);
+    assert(contentType.includes("text/html"), s, `GET /dashboard content-type is "${contentType}", expected text/html`);
+    assert(body.length > 0, s, "GET /dashboard body is empty");
+  });
+
+  await step("GET /assets/brand.css serves CSS", async (s) => {
+    const r = await fetch(`${state.serverUrl}/assets/brand.css`, { signal: AbortSignal.timeout(5000) });
+    const contentType = r.headers.get("content-type") ?? "";
+    const body = await r.text();
+    assert(r.status === 200, s, `GET /assets/brand.css returned ${r.status}`);
+    assert(contentType.includes("text/css"), s, `brand.css content-type is "${contentType}", expected text/css`);
+    assert(body.trim().length > 0, s, "brand.css is empty");
   });
 
   await step("admin API rejects requests without token", async (s) => {
@@ -372,8 +489,7 @@ async function runSteps() {
     );
   });
 
-  let inv1 = null;
-  await step("invite created (one_use)", async (s) => {
+  await step("invite created (one_use, with webhook)", async (s) => {
     const r = await api(
       "POST",
       "/api/invites",
@@ -383,15 +499,18 @@ async function runSteps() {
         working_dir: DESKTOP,
         model: MODEL,
         expiry_policy: "one_use",
+        notify_webhook: state.webhook.url,
       },
       ADMIN_TOKEN,
     );
     assert(r.status === 201, s, `POST /api/invites returned ${r.status}: ${r.text}`);
     const { invite, code, command } = r.json ?? {};
     assert(typeof code === "string" && CODE_RE.test(code), s, `code ${JSON.stringify(code)} does not match XXXX-XXXX`);
-    assert(command === `npx gig-slave ${code}`, s, `command is ${JSON.stringify(command)}, expected "npx gig-slave ${code}"`);
+    assert(command === `npx gigagent ${code}`, s, `command is ${JSON.stringify(command)}, expected "npx gigagent ${code}"`);
     assert(invite?.id, s, "response has no invite.id");
-    inv1 = { id: invite.id, code };
+    assert(invite.notify_webhook === state.webhook.url, s, `invite.notify_webhook is ${JSON.stringify(invite.notify_webhook)}`);
+    inv1.id = invite.id;
+    inv1.code = code;
   });
 
   await step("CLI redeemed code and exited 0", async (s) => {
@@ -406,8 +525,8 @@ async function runSteps() {
 
   await step("Desktop organized with originals intact", async (s) => {
     const moved = {
-      "Images/photo1.png": "photo1.png",
-      "Images/photo2.jpg": "photo2.jpg",
+      "Pictures/photo1.png": "photo1.png",
+      "Pictures/photo2.jpg": "photo2.jpg",
       "Documents/report.pdf": "report.pdf",
       "Documents/notes.txt": "notes.txt",
       "Music/song.mp3": "song.mp3",
@@ -421,18 +540,18 @@ async function runSteps() {
     for (const name of Object.keys(DESKTOP_FILES)) {
       assert(!existsSync(path.join(DESKTOP, name)), s, `${name} is still at the top level of Desktop`);
     }
-    const undoPath = path.join(DESKTOP, ".gig-slave-undo.json");
-    assert(existsSync(undoPath), s, ".gig-slave-undo.json was not written");
+    const undoPath = path.join(DESKTOP, ".gigagent-undo.json");
+    assert(existsSync(undoPath), s, ".gigagent-undo.json was not written");
     let undo;
     try {
       undo = JSON.parse(await fsp.readFile(undoPath, "utf8"));
     } catch (err) {
-      throw new E2EFailure(s, `.gig-slave-undo.json does not parse: ${err.message}`);
+      throw new E2EFailure(s, `.gigagent-undo.json does not parse: ${err.message}`);
     }
     assert(Array.isArray(undo) && undo.length === 5, s, `undo log is not an array of 5 entries: ${JSON.stringify(undo)}`);
   });
 
-  await step("dashboard shows completed invite, report and events", async (s) => {
+  await step("dashboard shows completed invite, result and report", async (s) => {
     let inv = null;
     const deadline = Date.now() + 5000;
     for (;;) {
@@ -448,7 +567,27 @@ async function runSteps() {
     const statuses = (inv.sessions ?? []).map((x) => x.status);
     assert(done.length === 1, s, `expected exactly one "done" session, got statuses [${statuses.join(", ")}]`);
     const sess = done[0];
-    assert(typeof sess.report === "string" && sess.report.includes("Images"), s, `report is ${JSON.stringify(sess.report)}`);
+    inv1.sessionId = sess.id;
+
+    assert(typeof sess.report === "string" && sess.report.includes("Pictures"), s, `report is ${JSON.stringify(sess.report)}`);
+    assert(sess.result && typeof sess.result === "object", s, `session result is ${JSON.stringify(sess.result)}`);
+    assert(sess.report === sess.result.summary, s, `report ${JSON.stringify(sess.report)} differs from result.summary`);
+    assert(sess.result.success === true, s, `result.success is ${sess.result.success}, expected true`);
+    assert(
+      typeof sess.result.answer === "string" && sess.result.answer.includes("5 files"),
+      s,
+      `result.answer is ${JSON.stringify(sess.result.answer)}`,
+    );
+    assert(
+      Array.isArray(sess.result.findings) && sess.result.findings[0]?.label === "Files sorted",
+      s,
+      `result.findings is ${JSON.stringify(sess.result.findings)}`,
+    );
+    assert(
+      Array.isArray(sess.result.changes) && sess.result.changes.length === 3,
+      s,
+      `result.changes has ${sess.result.changes?.length} entries, expected 3`,
+    );
     assert(sess.actions >= 2, s, `session actions=${sess.actions}, expected >= 2`);
     assert(sess.tokens_in > 0, s, `session tokens_in=${sess.tokens_in}, expected > 0`);
     assert(sess.machine && sess.machine.hostname, s, `session machine.hostname missing: ${JSON.stringify(sess.machine)}`);
@@ -476,7 +615,49 @@ async function runSteps() {
     );
   });
 
-  await step("proxy forced the invite model and hid the session token", async (s) => {
+  await step("report and notification events recorded", async (s) => {
+    const sessionId = inv1.sessionId;
+    assert(sessionId, s, "no session id from the organize run");
+    const events = await waitFor(
+      async () => {
+        const ev = await api("GET", `/api/sessions/${sessionId}/events`, undefined, ADMIN_TOKEN);
+        const list = ev.json?.events ?? [];
+        return list.some((e) => e.type === "notification") ? list : null;
+      },
+      5000,
+      "a notification event for the organize session",
+    );
+    const report = events.find((e) => e.type === "report");
+    assert(report, s, "no report event");
+    assert(
+      report.data?.result && typeof report.data.result === "object",
+      s,
+      `report event data.result is ${JSON.stringify(report.data?.result)}`,
+    );
+    const notif = events.find((e) => e.type === "notification" && e.data?.channel === "webhook");
+    assert(notif, s, "no webhook notification event");
+    assert(notif.data.ok === true, s, `webhook notification ok=${notif.data.ok} detail=${notif.data.detail}`);
+  });
+
+  await step("webhook received exactly one gigagent.session.ended POST", async (s) => {
+    await waitFor(() => state.webhook.posts.length >= 1, 5000, "the webhook POST");
+    await sleep(500); // give a duplicate, if any, time to arrive
+    const posts = state.webhook.posts.filter((p) => p.method === "POST");
+    assert(posts.length === 1, s, `webhook received ${posts.length} POSTs, expected exactly 1`);
+    const body = posts[0].json;
+    assert(body && typeof body === "object", s, `webhook body is not JSON: ${posts[0].text.slice(0, 200)}`);
+    assert(body.type === "gigagent.session.ended", s, `webhook type is ${JSON.stringify(body.type)}`);
+    assert(body.invite?.id === inv1.id, s, `webhook invite.id is ${JSON.stringify(body.invite?.id)}`);
+    assert(body.session?.id === inv1.sessionId, s, `webhook session.id is ${JSON.stringify(body.session?.id)}`);
+    assert(body.result?.success === true, s, `webhook result.success is ${JSON.stringify(body.result?.success)}`);
+    assert(
+      typeof body.result?.answer === "string" && body.result.answer.includes("5 files"),
+      s,
+      `webhook result.answer is ${JSON.stringify(body.result?.answer)}`,
+    );
+  });
+
+  await step("proxy used the gateway key and forced the invite model", async (s) => {
     const reqs = state.mock.requests;
     assert(reqs.length >= 3, s, `mock upstream saw ${reqs.length} requests, expected >= 3`);
     reqs.forEach((r, i) => {
@@ -486,9 +667,9 @@ async function runSteps() {
         `upstream request #${i} had model "${r.model}", expected "${MODEL}"`,
       );
       assert(
-        r.auth === `Bearer ${UPSTREAM_KEY}`,
+        r.auth === `Bearer ${GATEWAY_KEY}`,
         s,
-        `upstream request #${i} had Authorization ${redactAuth(r.auth)}, expected the upstream key`,
+        `upstream request #${i} had Authorization ${redactAuth(r.auth)}, expected the gateway key`,
       );
     });
   });
@@ -537,7 +718,11 @@ async function runSteps() {
     assert(before.status === 200, s, `/v1 call before expiry returned ${before.status}: ${before.text}`);
     const last = state.mock.requests.at(-1);
     assert(last?.model === TTL_MODEL, s, `upstream saw model "${last?.model}", expected forced "${TTL_MODEL}"`);
-    assert(last?.auth === `Bearer ${UPSTREAM_KEY}`, s, `upstream saw Authorization ${redactAuth(last?.auth)}`);
+    assert(
+      last?.auth === `Bearer ${UPSTREAM_KEY}`,
+      s,
+      `upstream saw Authorization ${redactAuth(last?.auth)}, expected the upstream key for a bare model id`,
+    );
 
     const wait = expiresAt + 3000 - Date.now();
     if (wait > 0) await sleep(wait);
@@ -622,6 +807,7 @@ async function teardown() {
   if (state.server) await stopChild(state.server, 3000);
   await Promise.all([...state.live].map((child) => stopChild(child, 2000)));
   if (state.mock) await state.mock.close().catch(() => {});
+  if (state.webhook) await state.webhook.close().catch(() => {});
 }
 
 async function main() {
