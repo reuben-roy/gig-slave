@@ -54,7 +54,7 @@ export class ApiClient {
     heartbeat(status, statusText) {
         return this.post("/agent/heartbeat", { status, status_text: statusText });
     }
-    complete(success, report, timeoutMs = 10_000) {
-        return this.post("/agent/complete", { success, report }, timeoutMs);
+    complete(success, report, result = null, timeoutMs = 10_000) {
+        return this.post("/agent/complete", { success, report, result }, timeoutMs);
     }
 }

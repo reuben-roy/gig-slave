@@ -1,3 +1,11 @@
+export interface Result {
+  success: boolean;
+  summary: string;
+  answer: string | null;
+  findings: { label: string; value: string }[];
+  changes: string[];
+}
+
 export interface Machine {
   hostname: string;
   platform: string;
@@ -86,7 +94,7 @@ export class ApiClient {
     return this.post("/agent/heartbeat", { status, status_text: statusText });
   }
 
-  complete(success: boolean, report: string, timeoutMs = 10_000): Promise<unknown> {
-    return this.post("/agent/complete", { success, report }, timeoutMs);
+  complete(success: boolean, report: string, result: Result | null = null, timeoutMs = 10_000): Promise<unknown> {
+    return this.post("/agent/complete", { success, report, result }, timeoutMs);
   }
 }

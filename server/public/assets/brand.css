@@ -1,0 +1,69 @@
+/* GigAgent design tokens, shared by the landing page and the dashboard. */
+:root {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --bg: #f7f7fb;
+  --surface: #ffffff;
+  --surface-2: #f1f2f7;
+  --border: #e3e4ec;
+  --border-strong: #cfd1dd;
+  --text: #0e1124;
+  --text-2: #4a4f68;
+  --text-3: #7a7f98;
+
+  --brand: #4f46e5;
+  --brand-hover: #4338ca;
+  --brand-soft: #eef0ff;
+  --brand-text: #ffffff;
+  --accent: #16a34a;          /* success / "done" */
+  --accent-soft: #e8f7ee;
+  --warn: #b45309;
+  --warn-soft: #fff5e6;
+  --danger: #dc2626;
+  --danger-soft: #fdecec;
+  --info: #2563eb;
+  --info-soft: #eaf1ff;
+
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 1px 2px rgba(14, 17, 36, .06);
+  --shadow: 0 1px 2px rgba(14, 17, 36, .05), 0 4px 16px rgba(14, 17, 36, .06);
+  --shadow-lg: 0 10px 40px rgba(14, 17, 36, .12);
+  --ring: 0 0 0 3px rgba(79, 70, 229, .25);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b0d17;
+    --surface: #12152a;
+    --surface-2: #181c36;
+    --border: #262b4a;
+    --border-strong: #353b62;
+    --text: #eef0fb;
+    --text-2: #b4b8d4;
+    --text-3: #868ab0;
+    --brand: #7c73ff;
+    --brand-hover: #8f87ff;
+    --brand-soft: #1e1f45;
+    --accent: #34d27a;
+    --accent-soft: #11291d;
+    --warn: #f0a63a;
+    --warn-soft: #2c2010;
+    --danger: #f26b6b;
+    --danger-soft: #2e1515;
+    --info: #6aa0ff;
+    --info-soft: #14203d;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 16px rgba(0, 0, 0, .25);
+    --shadow-lg: 0 10px 40px rgba(0, 0, 0, .45);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0b0d17; --surface: #12152a; --surface-2: #181c36; --border: #262b4a; --border-strong: #353b62;
+  --text: #eef0fb; --text-2: #b4b8d4; --text-3: #868ab0; --brand: #7c73ff; --brand-hover: #8f87ff;
+  --brand-soft: #1e1f45; --accent: #34d27a; --accent-soft: #11291d; --warn: #f0a63a; --warn-soft: #2c2010;
+  --danger: #f26b6b; --danger-soft: #2e1515; --info: #6aa0ff; --info-soft: #14203d;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 16px rgba(0, 0, 0, .25); --shadow-lg: 0 10px 40px rgba(0, 0, 0, .45);
+}
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }

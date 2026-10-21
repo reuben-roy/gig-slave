@@ -6,21 +6,22 @@ import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import { Agent, resolveWorkingDir } from "./agent.js";
-import { ApiClient, HttpError, NetworkError, type RedeemResult } from "./api.js";
+import { ApiClient, HttpError, NetworkError, type RedeemResult, type Result } from "./api.js";
 import { Cleanup } from "./cleanup.js";
 import { EventBuffer } from "./events.js";
 import { resolveServerUrl } from "./server-url.js";
-import { StatusUi } from "./ui.js";
+import { StatusUi, type FinalInfo } from "./ui.js";
 
+const CLI_VERSION = "0.2.0";
 const OFFLINE_LIMIT_MS = 5 * 60_000;
 const MAX_CODE_TRIES = 3;
 
 function cliVersion(): string {
   try {
     const dir = path.dirname(fileURLToPath(import.meta.url));
-    return JSON.parse(fs.readFileSync(path.join(dir, "..", "package.json"), "utf8")).version ?? "0.0.0";
+    return JSON.parse(fs.readFileSync(path.join(dir, "..", "package.json"), "utf8")).version ?? CLI_VERSION;
   } catch {
-    return "0.0.0";
+    return CLI_VERSION;
   }
 }
 
@@ -59,7 +60,6 @@ async function main(): Promise<void> {
   const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
   let agent: Agent | null = null;
   let events: EventBuffer | null = null;
-  let ui: StatusUi | null = null;
   let session: RedeemResult | null = null;
   let finishing = false;
   let online = true;
@@ -67,14 +67,28 @@ async function main(): Promise<void> {
 
   let hbTimer: NodeJS.Timeout | null = null;
 
-  const finish = (code: number, message?: string): never => {
+  const ui = new StatusUi(() => ({
+    statusText: agent?.statusText ?? "Starting…",
+    online,
+    actions: agent?.actions ?? 0,
+    startedAt,
+  }));
+
+  /** Tear everything down. `message` is a one-line error; `final` is the boxed ending after a job ran. */
+  const finish = (code: number, message?: string, final?: FinalInfo): never => {
     finishing = true;
     if (hbTimer) clearTimeout(hbTimer);
     events?.stop();
-    ui?.stop();
+    ui.stop();
     agent?.dispose();
-    if (message) console.log(message);
-    if (cleanup.run()) console.log("gig-slave removed itself.");
+    const removed = cleanup.run();
+    if (final) {
+      if (removed) final.lines.push("", "Your helper has removed itself.");
+      ui.finalBox(final);
+    } else {
+      if (message) (code === 0 ? ui.say : ui.error).call(ui, message);
+      if (removed) ui.say(ui.interactive ? "  Your helper has removed itself." : "Your helper has removed itself.");
+    }
     process.exit(code);
   };
 
@@ -83,13 +97,16 @@ async function main(): Promise<void> {
     if (signalled) return;
     signalled = true;
     finishing = true;
-    ui?.stop();
+    ui.stop();
     console.log("\nStopping…");
     await agent?.abort();
     if (session) {
-      await api.complete(false, "Cancelled by the person at the computer.", 3000).catch(() => {});
+      const why = "The person at the computer stopped the helper before it finished.";
+      await api
+        .complete(false, why, { success: false, summary: why, answer: null, findings: [], changes: [] }, 3000)
+        .catch(() => {});
     }
-    finish(130);
+    finish(130, undefined, { ok: false, title: "Stopped", lines: ["You stopped the helper. Anything it already changed can be undone with the .gigagent-undo.json file in the working folder, if it moved anything."] });
   };
   process.on("SIGINT", onSignal);
   process.on("SIGTERM", onSignal);
@@ -97,7 +114,10 @@ async function main(): Promise<void> {
   process.on("exit", () => cleanup.run()); // last resort; synchronous and idempotent
   process.on("uncaughtException", async (err) => {
     if (session && !finishing) {
-      await api.complete(false, `The helper crashed: ${err.message}`, 3000).catch(() => {});
+      const why = `The helper crashed: ${err.message}`;
+      await api
+        .complete(false, why, { success: false, summary: why, answer: null, findings: [], changes: [] }, 3000)
+        .catch(() => {});
     }
     finish(1, `Something went wrong: ${err.message}`);
   });
@@ -113,19 +133,18 @@ async function main(): Promise<void> {
     arch: os.arch(),
     username: os.userInfo().username,
   };
-  let code = (process.argv[2] ?? process.env.GIG_SLAVE_CODE ?? "").trim();
+  let code = (process.argv[2] ?? process.env.GIGAGENT_CODE ?? process.env.GIG_SLAVE_CODE ?? "").trim();
 
   if (api.baseUrl.includes("REPLACE-ME")) {
-    finish(1, "This copy of gig-slave hasn't been set up with a server address yet. Please tell the person who sent it to you.");
+    finish(1, "This copy of GigAgent hasn't been set up with a server address yet. Please tell the person who sent it to you.");
   }
 
-  const header = new StatusUi(() => ({ statusText: "", online: true, actions: 0, startedAt }));
-  header.header();
+  ui.header();
 
   for (let attempt = 1; ; attempt++) {
     if (!code) {
-      if (!interactive) finish(1, "No code given. Run: npx gig-slave ABCD-EFGH");
-      const answer = await ask("Enter the code you were sent: ");
+      if (!interactive) finish(1, "No code given. Run: npx gigagent ABCD-EFGH");
+      const answer = await ask(ui.codePrompt);
       if (answer === null) finish(130, "");
       code = answer ?? "";
       if (!code) continue;
@@ -142,7 +161,7 @@ async function main(): Promise<void> {
           if (!interactive || attempt >= MAX_CODE_TRIES) {
             finish(1, "That code wasn't recognised. Please check it and try again.");
           }
-          console.log("That code wasn't recognised. Please check it and try again.");
+          ui.warn("That code wasn't recognised. Please check it and try again.");
           code = "";
           continue;
         }
@@ -166,7 +185,7 @@ async function main(): Promise<void> {
   const s = session;
 
   // --- temp agent dir ---
-  const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "gig-slave-"));
+  const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "gigagent-"));
   cleanup.tmpDirs.push(agentDir);
   // Pi and the agent's shell put scratch files in os.tmpdir(); keep them inside the dir we remove.
   process.env.TMPDIR = agentDir;
@@ -183,7 +202,7 @@ async function main(): Promise<void> {
     killed = true;
     offlineReason = offline;
     if (agent) void agent.abort();
-    else finish(offline ? 1 : 2, offline ? "Lost the connection for too long, so the helper stopped." : "Stopped by the operator.");
+    else finish(offline ? 1 : 2, offline ? "Lost the connection for too long, so the helper stopped." : "The person who sent you the code stopped this helper.");
   };
   const beat = async () => {
     if (finishing) return;
@@ -192,7 +211,7 @@ async function main(): Promise<void> {
       const res = await api.heartbeat(agent?.status ?? "connecting", agent?.statusText ?? "Starting…");
       if (!online) {
         online = true;
-        ui?.changed();
+        ui.changed();
       }
       offlineSince = null;
       failures = 0;
@@ -211,7 +230,7 @@ async function main(): Promise<void> {
       offlineSince ??= Date.now();
       if (online) {
         online = false;
-        ui?.changed();
+        ui.changed();
       }
       if (Date.now() - offlineSince > OFFLINE_LIMIT_MS) return stopFor(true);
       next = Math.min(s.heartbeat_ms * 2 ** Math.min(failures, 5), 30_000);
@@ -226,7 +245,7 @@ async function main(): Promise<void> {
     cwd = await resolveWorkingDir(s.working_dir);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    await api.complete(false, msg).catch(() => {});
+    await api.complete(false, msg, { success: false, summary: msg, answer: null, findings: [], changes: [] }).catch(() => {});
     finish(1, msg);
     return;
   }
@@ -234,13 +253,6 @@ async function main(): Promise<void> {
   // --- wiring ---
   events = new EventBuffer(api);
   const buf = events;
-  const view = () => ({
-    statusText: agent?.statusText ?? "Starting…",
-    online,
-    actions: agent?.actions ?? 0,
-    startedAt,
-  });
-  ui = new StatusUi(view);
   const screen = ui;
 
   agent = new Agent({
@@ -255,7 +267,7 @@ async function main(): Promise<void> {
   const ag = agent;
   await ag.init();
   if (finishing) return;
-  if (killed) finish(offlineReason ? 1 : 2, offlineReason ? "Lost the connection for too long, so the helper stopped." : "Stopped by the operator.");
+  if (killed) finish(offlineReason ? 1 : 2, offlineReason ? "Lost the connection for too long, so the helper stopped." : "The person who sent you the code stopped this helper.");
 
   screen.connected(s.task);
   buf.start(1000);
@@ -267,28 +279,44 @@ async function main(): Promise<void> {
   if (signalled) return; // onSignal reports and exits
 
   if (killed) {
-    if (offlineReason) finish(1, "Lost the connection for too long, so the helper stopped.");
-    finish(2, "Stopped by the operator.");
+    if (offlineReason) {
+      finish(1, undefined, { ok: false, title: "Connection lost", lines: ["The helper lost its internet connection for too long, so it stopped."] });
+    }
+    finish(2, undefined, { ok: false, title: "Stopped", lines: ["The person who sent you the code stopped this helper."] });
   }
 
   finishing = true;
   if (hbTimer) clearTimeout(hbTimer);
-  buf.push("status", { status: result.success ? "done" : "failed", text: result.success ? "Finished" : "Failed" });
+  const outcome: Result = result.result;
+  buf.push("status", { status: outcome.success ? "done" : "failed", text: outcome.success ? "Finished" : "Failed" });
   await buf.flush();
-  for (let i = 0; i < 3; i++) {
-    try {
-      await api.complete(result.success, result.report);
-      break;
-    } catch (err) {
-      if (err instanceof HttpError || i === 2) break;
-      await sleep(1000);
+  let sent = false;
+  // Keep heartbeating while we retry, so the server's sweeper doesn't mark a finished job "Lost connection".
+  const reportBeat = setInterval(() => {
+    api.heartbeat(ag.status, "Sending the report…").catch(() => {});
+  }, s.heartbeat_ms);
+  const COMPLETE_BACKOFF_MS = [1000, 3000, 7000, 15000];
+  try {
+    for (let i = 0; i <= COMPLETE_BACKOFF_MS.length; i++) {
+      try {
+        await api.complete(outcome.success, outcome.summary, outcome);
+        sent = true;
+        break;
+      } catch (err) {
+        // 4xx (other than 429) won't get better by retrying.
+        if (err instanceof HttpError && err.status < 500 && err.status !== 429) break;
+        if (i === COMPLETE_BACKOFF_MS.length) break;
+        await sleep(COMPLETE_BACKOFF_MS[i]);
+      }
     }
+  } finally {
+    clearInterval(reportBeat);
   }
 
-  if (result.success) {
-    finish(0, "✓ Done. A report was sent to the person who asked for this. You can close this window.");
-  }
-  finish(1, `✗ The helper could not finish the task. ${result.report}`);
+  const lines = [outcome.summary];
+  lines.push("", sent ? "A report was sent to the person who asked for this. You can close this window." : "Note: the report could not be sent. Please tell the person who sent you the code.");
+  if (outcome.success) finish(0, undefined, { ok: true, title: "All done", lines });
+  finish(1, undefined, { ok: false, title: "The helper could not finish the task", lines });
 }
 
 main().catch((err) => {
